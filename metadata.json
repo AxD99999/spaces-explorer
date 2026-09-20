@@ -1,0 +1,7 @@
+{
+  "name": "Hugging Face Spaces Explorer",
+  "description": "Android app displaying currently active Hugging Face Spaces using the spaces-json API with runtime statuses, hardware details, SDK filters, search, and persistent offline storage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
