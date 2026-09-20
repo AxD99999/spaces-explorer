@@ -5,29 +5,23 @@ interface PaginationBarProps {
   currentPage: number; // 0-indexed
   totalPages: number | null; // null if unknown / API endless
   totalCount: number;
-  pageSize: number;
+  pageSize?: number;
   isLoading: boolean;
   onPageChange: (newPage: number) => void;
-  isFilterActive: boolean;
+  isFilterActive?: boolean;
 }
 
 export const PaginationBar: React.FC<PaginationBarProps> = ({
   currentPage,
   totalPages,
   totalCount,
-  pageSize,
   isLoading,
   onPageChange,
-  isFilterActive,
 }) => {
-  // If there are no items or only 1 page in filtered mode with <= pageSize items,
-  // we can show a minimal count or hide the buttons if totalPages === 1
+  // If there are no items, return null
   if (totalCount === 0) {
     return null;
   }
-
-  const startItem = currentPage * pageSize + 1;
-  const endItem = Math.min((currentPage + 1) * pageSize, totalCount);
 
   const canGoPrev = currentPage > 0 && !isLoading;
   const canGoNext = !isLoading && (totalPages !== null ? currentPage < totalPages - 1 : totalCount > 0);
@@ -48,19 +42,6 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
         <ChevronLeft className="w-3.5 h-3.5" />
         <span>Prev</span>
       </button>
-
-      {/* Page Info */}
-      <div className="flex flex-col items-center leading-tight text-center">
-        <div className="font-semibold text-slate-900 dark:text-slate-100 text-xs flex items-center gap-1.5">
-          <span>Page {currentPage + 1}</span>
-          {totalPages !== null && (
-            <span className="text-slate-400 dark:text-slate-500 font-normal">of {totalPages}</span>
-          )}
-        </div>
-        <span className="text-[10px] text-slate-500 dark:text-slate-400">
-          {totalCount > 0 ? `${startItem}–${endItem} of ${totalCount}` : '24 per page'}
-        </span>
-      </div>
 
       {/* Next Button */}
       <button

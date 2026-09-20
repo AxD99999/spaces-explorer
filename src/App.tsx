@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { HfSpace, SpaceFilterState, ToastMessage } from './types';
+import { HfSpace, SpaceFilterState, ToastMessage, AppNavView, UserApiKey } from './types';
 import { fetchHfSpaces, fetchHfSemanticSearch } from './services/api';
 import { AndroidFrame } from './components/AndroidFrame';
 import { TopAppBar } from './components/TopAppBar';
@@ -8,6 +8,14 @@ import { PaginationBar } from './components/PaginationBar';
 import { FilterBottomSheet } from './components/FilterBottomSheet';
 import { SpaceCard } from './components/SpaceCard';
 import { SpaceDetails } from './components/SpaceDetails';
+import { SpaceRunner } from './components/SpaceRunner';
+import { NavigationDrawer } from './components/NavigationDrawer';
+import { FavouritesView } from './components/FavouritesView';
+import { ApiKeysManager } from './components/ApiKeysManager';
+import { CurrentlyRunningView } from './components/CurrentlyRunningView';
+import { MediaView } from './components/MediaView';
+import { taskManager } from './services/taskManager';
+import { getAllMediaItems } from './services/mediaStorage';
 import { Toast } from './components/Toast';
 import { FilterX, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
@@ -26,12 +34,68 @@ const INITIAL_FILTER: SpaceFilterState = {
   sortBy: 'trending-desc',
 };
 
+const DEFAULT_API_KEYS_STORAGE_KEY = 'hf_user_api_keys';
+const FAVOURITES_STORAGE_KEY = 'hf_favourite_spaces';
+
 export default function App() {
   const [spaces, setSpaces] = useState<HfSpace[]>([]);
   const [currentPage, setCurrentPage] = useState<number>(0);
   const [frontendPage, setFrontendPage] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [selectedSpace, setSelectedSpace] = useState<HfSpace | null>(null);
+
+  // Navigation & Sub-views
+  const [navView, setNavView] = useState<AppNavView>('browse');
+  const [isNavDrawerOpen, setIsNavDrawerOpen] = useState<boolean>(false);
+  const [runningSpace, setRunningSpace] = useState<HfSpace | null>(null);
+  const [detailsSpace, setDetailsSpace] = useState<HfSpace | null>(null);
+
+  // Favourites state
+  const [favourites, setFavourites] = useState<HfSpace[]>(() => {
+    try {
+      const saved = localStorage.getItem(FAVOURITES_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Background Tasks and Saved Media Counts
+  const [runningTasksCount, setRunningTasksCount] = useState<number>(0);
+  const [savedMediaCount, setSavedMediaCount] = useState<number>(0);
+
+  // Subscribe to background task changes
+  useEffect(() => {
+    const unsubscribe = taskManager.subscribe((tasks) => {
+      setRunningTasksCount(tasks.filter((t) => t.status === 'running').length);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Refresh saved media count
+  const refreshMediaCount = useCallback(async () => {
+    try {
+      const items = await getAllMediaItems();
+      setSavedMediaCount(items.length);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshMediaCount();
+  }, [navView, refreshMediaCount]);
+
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState<UserApiKey[]>(() => {
+    try {
+      const saved = localStorage.getItem(DEFAULT_API_KEYS_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Filter state
   const [filter, setFilter] = useState<SpaceFilterState>(INITIAL_FILTER);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -80,6 +144,82 @@ export default function App() {
     []
   );
 
+  // Save favourites changes
+  const handleToggleFavourite = useCallback(
+    (space: HfSpace) => {
+      setFavourites((prev) => {
+        const exists = prev.some((s) => s.id === space.id);
+        let updated: HfSpace[];
+        if (exists) {
+          updated = prev.filter((s) => s.id !== space.id);
+          showToast(`Removed "${space.title || space.id}" from favourites`, 'info');
+        } else {
+          updated = [space, ...prev];
+          showToast(`Saved "${space.title || space.id}" to favourites!`, 'success');
+        }
+        try {
+          localStorage.setItem(FAVOURITES_STORAGE_KEY, JSON.stringify(updated));
+        } catch (e) {
+          console.error('Failed to persist favourites', e);
+        }
+        return updated;
+      });
+    },
+    [showToast]
+  );
+
+  // Save API keys changes
+  const handleAddApiKey = useCallback((name: string, token: string) => {
+    const newKey: UserApiKey = {
+      id: 'key_' + Math.random().toString(36).substring(2, 9),
+      name: name.trim() || 'Hugging Face Key',
+      token: token.trim(),
+      createdAt: new Date().toISOString(),
+      isDefault: false,
+    };
+    setApiKeys((prev) => {
+      // If it's the first key, make it default
+      if (prev.length === 0) newKey.isDefault = true;
+      const updated = [newKey, ...prev];
+      try {
+        localStorage.setItem(DEFAULT_API_KEYS_STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to persist API keys', e);
+      }
+      return updated;
+    });
+    showToast('API Key saved successfully', 'success');
+  }, [showToast]);
+
+  const handleDeleteApiKey = useCallback((id: string) => {
+    setApiKeys((prev) => {
+      const updated = prev.filter((k) => k.id !== id);
+      try {
+        localStorage.setItem(DEFAULT_API_KEYS_STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to persist API keys', e);
+      }
+      return updated;
+    });
+    showToast('API Key removed', 'info');
+  }, [showToast]);
+
+  const handleSetDefaultKey = useCallback((id: string) => {
+    setApiKeys((prev) => {
+      const updated = prev.map((k) => ({
+        ...k,
+        isDefault: k.id === id,
+      }));
+      try {
+        localStorage.setItem(DEFAULT_API_KEYS_STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to persist API keys', e);
+      }
+      return updated;
+    });
+    showToast('Default API Key updated', 'success');
+  }, [showToast]);
+
   // Determine if any filter is active
   const isFilterActive = useMemo(() => {
     return (
@@ -95,25 +235,22 @@ export default function App() {
     );
   }, [filter]);
 
-  // Primary live fetch handler: automatically called on load, backend page change, or category filter
+  // Primary live fetch handler
   const loadData = useCallback(
     async (pageToLoad: number, categoryFilter: string, searchQuery: string) => {
       setIsLoading(true);
       try {
         if (categoryFilter !== 'all') {
-          // API request for semantic category filtering
           const semanticResults = await fetchHfSemanticSearch({
             category: categoryFilter,
             query: searchQuery,
           });
           setSpaces(semanticResults);
         } else {
-          // API request for paginated spaces (spaces-json?p=X)
           const result = await fetchHfSpaces(pageToLoad);
           setSpaces(result.spaces);
         }
 
-        // Scroll back to top on data load
         if (scrollContainerRef.current) {
           scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -132,13 +269,11 @@ export default function App() {
     [showToast]
   );
 
-  // Automatically refresh when the app loads
   useEffect(() => {
     loadData(currentPage, filter.category, filter.search);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle backend page change (when no filter is active)
   const handleBackendPageChange = useCallback(
     (newPage: number) => {
       if (newPage < 0 || isLoading) return;
@@ -148,16 +283,11 @@ export default function App() {
     [isLoading, filter.search, loadData]
   );
 
-  // Handle filter updates
   const handleFilterUpdate = useCallback(
     (updates: Partial<SpaceFilterState>) => {
-      // Whenever filters change, reset the frontend page to 0
       setFrontendPage(0);
-
       setFilter((prev) => {
         const next = { ...prev, ...updates };
-
-        // If category changed, trigger API request
         if (updates.category !== undefined && updates.category !== prev.category) {
           if (updates.category === 'all') {
             loadData(currentPage, 'all', next.search);
@@ -165,19 +295,16 @@ export default function App() {
             loadData(currentPage, updates.category, next.search);
           }
         }
-
         return next;
       });
     },
     [currentPage, loadData]
   );
 
-  // Manual refresh trigger
   const handleManualRefresh = useCallback(() => {
     loadData(currentPage, filter.category, filter.search);
   }, [currentPage, filter.category, filter.search, loadData]);
 
-  // Compute available filter options dynamically
   const {
     availableCategories,
     availableHardwares,
@@ -202,13 +329,14 @@ export default function App() {
     return {
       availableCategories: Array.from(categories).sort(),
       availableHardwares: Array.from(hardwares).sort(),
-      availableAuthors: Array.from(authors).sort(),
+      availableAuthors: Array.from(authors).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+      ),
       availableSdks: Array.from(sdks).sort(),
       activeSpacesCount: active,
     };
   }, [spaces]);
 
-  // Count active non-default filters
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filter.status !== 'all') count++;
@@ -222,7 +350,6 @@ export default function App() {
     return count;
   }, [filter]);
 
-  // Filter and sort spaces
   const filteredSpaces = useMemo(() => {
     const searchTerm = filter.search.trim().toLowerCase();
 
@@ -305,22 +432,18 @@ export default function App() {
       });
   }, [spaces, filter]);
 
-  // Frontend Pagination calculation (Max 24 spaces per page when filters are active)
   const totalFrontendPages = useMemo(() => {
     return Math.max(1, Math.ceil(filteredSpaces.length / ITEMS_PER_PAGE));
   }, [filteredSpaces.length]);
 
-  // Sliced displayed spaces (enforces max 24 spaces per page)
   const displayedSpaces = useMemo(() => {
     if (isFilterActive) {
       const startIndex = frontendPage * ITEMS_PER_PAGE;
       return filteredSpaces.slice(startIndex, startIndex + ITEMS_PER_PAGE);
     }
-    // When no filter is active, spaces-json returns 24 per page
     return filteredSpaces.slice(0, ITEMS_PER_PAGE);
   }, [isFilterActive, frontendPage, filteredSpaces]);
 
-  // Page change dispatcher
   const handlePageChange = useCallback(
     (newPage: number) => {
       if (isFilterActive) {
@@ -337,31 +460,144 @@ export default function App() {
     [isFilterActive, totalFrontendPages, handleBackendPageChange]
   );
 
+  const isSpaceFavourite = useCallback(
+    (spaceId: string) => favourites.some((s) => s.id === spaceId),
+    [favourites]
+  );
+
   return (
     <AndroidFrame
       isPhoneFrame={isPhoneFrame}
       onToggleFrame={() => setIsPhoneFrame(!isPhoneFrame)}
       onSystemBack={() => {
-        if (selectedSpace) {
-          setSelectedSpace(null);
+        if (runningSpace) {
+          setRunningSpace(null);
+        } else if (detailsSpace) {
+          setDetailsSpace(null);
+        } else if (navView !== 'browse') {
+          setNavView('browse');
         }
       }}
-      canGoBack={selectedSpace !== null}
+      canGoBack={runningSpace !== null || detailsSpace !== null || navView !== 'browse'}
     >
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        {/* Hamburger Navigation Drawer */}
+        <NavigationDrawer
+          isOpen={isNavDrawerOpen}
+          onClose={() => setIsNavDrawerOpen(false)}
+          currentView={navView}
+          onSelectView={(view) => {
+            setNavView(view);
+            // Clear any sub-screen when switching views
+            setRunningSpace(null);
+            setDetailsSpace(null);
+            refreshMediaCount();
+          }}
+          runningCount={runningTasksCount}
+          mediaCount={savedMediaCount}
+          favouritesCount={favourites.length}
+          apiKeysCount={apiKeys.length}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+
         <AnimatePresence mode="wait">
-          {selectedSpace ? (
-            /* Space Details Screen */
+          {runningSpace ? (
+            /* Interactive Space Runner Screen */
+            <SpaceRunner
+              key={`runner-${runningSpace.id}`}
+              space={runningSpace}
+              apiKeys={apiKeys}
+              onBack={() => setRunningSpace(null)}
+              onOpenDetails={(sp) => {
+                setDetailsSpace(sp);
+                setRunningSpace(null);
+              }}
+              onOpenApiKeys={() => {
+                setNavView('api-keys');
+                setRunningSpace(null);
+              }}
+            />
+          ) : detailsSpace ? (
+            /* Space API Specifications & Details Screen */
             <SpaceDetails
-              key="space-details-view"
-              space={selectedSpace}
-              onBack={() => setSelectedSpace(null)}
+              key={`details-${detailsSpace.id}`}
+              space={detailsSpace}
+              onBack={() => setDetailsSpace(null)}
+              onRunSpace={(sp) => {
+                setRunningSpace(sp);
+                setDetailsSpace(null);
+              }}
+              onOpenApiKeys={() => {
+                setNavView('api-keys');
+                setDetailsSpace(null);
+              }}
+            />
+          ) : navView === 'currently-running' ? (
+            /* Currently Running Background Inference View */
+            <CurrentlyRunningView
+              key="currently-running-view"
+              onOpenSpace={(sp) => {
+                setRunningSpace(sp);
+                setNavView('browse');
+              }}
+              onBackToBrowse={() => setNavView('browse')}
+              onOpenMedia={() => {
+                setNavView('media');
+                refreshMediaCount();
+              }}
+            />
+          ) : navView === 'media' ? (
+            /* Generated Media View (Images, Videos, Text, Audio, Other) */
+            <MediaView
+              key="media-view"
+              onBackToBrowse={() => setNavView('browse')}
+              onOpenSpaceById={(spaceId) => {
+                const sp =
+                  spaces.find((s) => s.id === spaceId) ||
+                  favourites.find((s) => s.id === spaceId);
+                if (sp) {
+                  setRunningSpace(sp);
+                  setNavView('browse');
+                } else {
+                  setRunningSpace({
+                    id: spaceId,
+                    author: spaceId.split('/')[0] || 'community',
+                    likes: 0,
+                    sdk: 'gradio',
+                    tags: [],
+                    subdomain: spaceId.replace('/', '-').toLowerCase(),
+                  });
+                  setNavView('browse');
+                }
+              }}
+            />
+          ) : navView === 'favourites' ? (
+            /* Favourites View */
+            <FavouritesView
+              key="favourites-view"
+              favouriteSpaces={favourites}
+              onToggleFavourite={handleToggleFavourite}
+              onRunSpace={(sp) => setRunningSpace(sp)}
+              onOpenDetails={(sp) => setDetailsSpace(sp)}
+              onBackToBrowse={() => setNavView('browse')}
+            />
+          ) : navView === 'api-keys' ? (
+            /* API Keys Manager View */
+            <ApiKeysManager
+              key="apikeys-view"
+              apiKeys={apiKeys}
+              onAddKey={handleAddApiKey}
+              onDeleteKey={handleDeleteApiKey}
+              onSetDefaultKey={handleSetDefaultKey}
+              onBack={() => setNavView('browse')}
             />
           ) : (
-            /* Main Spaces Screen */
+            /* Primary Browse Spaces Screen */
             <div key="spaces-list-view" className="flex-1 flex flex-col h-full overflow-hidden">
-              {/* Minimalist Top Bar with Light/Dark Mode Toggle */}
+              {/* Minimalist Top Bar with Hamburger Menu & Light/Dark Mode */}
               <TopAppBar
+                onOpenMenu={() => setIsNavDrawerOpen(true)}
                 onRefresh={handleManualRefresh}
                 isLoading={isLoading}
                 spaceCount={filteredSpaces.length}
@@ -370,6 +606,8 @@ export default function App() {
                 onTogglePhoneFrame={() => setIsPhoneFrame(!isPhoneFrame)}
                 theme={theme}
                 onToggleTheme={toggleTheme}
+                favouritesCount={favourites.length}
+                runningTasksCount={runningTasksCount}
               />
 
               {/* Minimalist Search & Categories */}
@@ -399,7 +637,6 @@ export default function App() {
                 id="spaces-cards-scroll-container"
                 className="flex-1 overflow-y-auto px-4 pb-16 pt-1 space-y-2.5 scrollbar-thin relative"
               >
-                {/* Initial Loading State */}
                 {isLoading && spaces.length === 0 ? (
                   <div className="py-20 flex flex-col items-center justify-center text-center space-y-2.5">
                     <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-amber-500">
@@ -437,7 +674,10 @@ export default function App() {
                       <SpaceCard
                         key={space.id}
                         space={space}
-                        onSelect={(s) => setSelectedSpace(s)}
+                        isFavourite={isSpaceFavourite(space.id)}
+                        onSelect={(s) => setRunningSpace(s)}
+                        onToggleFavourite={(s) => handleToggleFavourite(s)}
+                        onOpenDetails={(s) => setDetailsSpace(s)}
                       />
                     ))}
 

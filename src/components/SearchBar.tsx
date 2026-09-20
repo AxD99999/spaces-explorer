@@ -1,6 +1,6 @@
 import React from 'react';
 import { Search, X, SlidersHorizontal } from 'lucide-react';
-import { SpaceFilterState, HF_SEMANTIC_CATEGORIES } from '../types';
+import { SpaceFilterState } from '../types';
 
 interface SearchBarProps {
   filter: SpaceFilterState;
@@ -20,7 +20,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   filteredCount,
 }) => {
   return (
-    <div id="search-filter-section" className="px-4 py-2.5 space-y-2.5">
+    <div id="search-filter-section" className="px-4 py-2.5 space-y-2">
       {/* Minimalist Search Input */}
       <div className="relative flex items-center">
         <div className="absolute left-3.5 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center">
@@ -66,38 +66,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             )}
           </button>
         </div>
-      </div>
-
-      {/* Category Pills (Minimalist horizontal scrolling list without cluttering labels) */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar text-xs">
-        <button
-          onClick={() => onChange({ category: 'all' })}
-          className={`px-3 py-1 rounded-full font-medium whitespace-nowrap transition-all cursor-pointer ${
-            filter.category === 'all'
-              ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-semibold shadow-2xs'
-              : 'bg-white dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200/80 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-800'
-          }`}
-        >
-          All
-        </button>
-
-        {HF_SEMANTIC_CATEGORIES.map((cat) => {
-          const isSelected = filter.category === cat.id;
-          return (
-            <button
-              key={cat.id}
-              onClick={() => onChange({ category: isSelected ? 'all' : cat.id })}
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-medium whitespace-nowrap transition-all cursor-pointer ${
-                isSelected
-                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-semibold shadow-2xs'
-                  : 'bg-white dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200/80 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
-            >
-              <span className="text-xs">{cat.emoji}</span>
-              <span>{cat.name}</span>
-            </button>
-          );
-        })}
       </div>
 
       {/* Subtle Results & Active Filter Status */}

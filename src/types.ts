@@ -100,6 +100,92 @@ export interface SpaceFilterState {
   sortBy: 'trending-desc' | 'likes-desc' | 'name-asc' | 'name-desc' | 'recent-desc' | 'created-desc';
 }
 
+export interface UserApiKey {
+  id: string;
+  name: string;
+  token: string;
+  createdAt: string;
+  lastUsed?: string;
+  isDefault?: boolean;
+}
+
+export interface SpaceEndpointParam {
+  label: string;
+  parameter_name: string;
+  parameter_has_default?: boolean;
+  parameter_default?: any;
+  type?: any;
+  python_type?: {
+    type: string;
+    description?: string;
+  };
+  component?: string;
+  example_input?: any;
+}
+
+export interface SpaceEndpointReturn {
+  label: string;
+  type?: any;
+  python_type?: {
+    type: string;
+    description?: string;
+  };
+  component?: string;
+}
+
+export interface SpaceEndpointSpec {
+  name: string; // e.g., '/predict', '/generate'
+  parameters: SpaceEndpointParam[];
+  returns: SpaceEndpointReturn[];
+}
+
+export interface SpaceApiSpec {
+  spaceId: string;
+  subdomain?: string;
+  host: string;
+  endpoints: SpaceEndpointSpec[];
+  raw?: any;
+  sdk?: string;
+}
+
+export type AppNavView = 'browse' | 'currently-running' | 'media' | 'favourites' | 'api-keys';
+
+export type GeneratedMediaType = 'image' | 'video' | 'audio' | 'text' | 'other';
+
+export interface GeneratedMediaItem {
+  id: string;
+  type: GeneratedMediaType;
+  url?: string;
+  textContent?: string;
+  title: string;
+  prompt?: string;
+  spaceId: string;
+  spaceTitle: string;
+  spaceEmoji?: string;
+  createdAt: string;
+  metadata?: {
+    endpoint?: string;
+    elapsedSeconds?: number;
+    mimeType?: string;
+    size?: number;
+  };
+}
+
+export interface ActiveSpaceTask {
+  id: string;
+  space: HfSpace;
+  endpoint: string;
+  formValues: Record<string, any>;
+  imagePreviews?: Record<string, string>;
+  multiImagePreviews?: Record<string, string[]>;
+  status: 'running' | 'completed' | 'error';
+  startTime: number;
+  elapsedSeconds: number;
+  result?: any;
+  error?: string | null;
+  savedMediaIds?: string[];
+}
+
 export interface ToastMessage {
   id: string;
   message: string;
@@ -107,3 +193,4 @@ export interface ToastMessage {
   onAction?: () => void;
   type?: 'info' | 'success' | 'warning' | 'error';
 }
+

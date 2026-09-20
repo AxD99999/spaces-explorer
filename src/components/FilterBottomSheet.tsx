@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Check, RotateCcw, SlidersHorizontal, ArrowUpDown, Pin, Sparkles, Cpu, Layers } from 'lucide-react';
+import { X, Check, RotateCcw, SlidersHorizontal, ArrowUpDown, Pin, Sparkles, Cpu, Layers, Search } from 'lucide-react';
 import { SpaceFilterState, HF_SEMANTIC_CATEGORIES } from '../types';
 
 interface FilterBottomSheetProps {
@@ -27,7 +27,23 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const [authorSearch, setAuthorSearch] = useState('');
+
+  // Alphabetically sort creators/organizations (case-insensitive)
+  const sortedAuthors = useMemo(() => {
+    return [...availableAuthors].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' })
+    );
+  }, [availableAuthors]);
+
+  const filteredAuthors = useMemo(() => {
+    const q = authorSearch.trim().toLowerCase();
+    if (!q) return sortedAuthors;
+    return sortedAuthors.filter((auth) => auth.toLowerCase().includes(q));
+  }, [sortedAuthors, authorSearch]);
+
   const handleReset = () => {
+    setAuthorSearch('');
     onChange({
       search: '',
       status: 'all',
@@ -249,21 +265,54 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
             {/* Author / Organization */}
             {availableAuthors.length > 0 && (
               <div className="space-y-2">
-                <label className="font-semibold text-slate-700 dark:text-slate-300">
-                  Creator / Organization
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-700 dark:text-slate-300">
+                    Creator / Organization
+                  </label>
+                  {authorSearch && (
+                    <span className="text-[10px] text-slate-400">
+                      {filteredAuthors.length} of {sortedAuthors.length}
+                    </span>
+                  )}
+                </div>
+
+                {/* Search Bar for Creator/Org */}
+                <div className="relative flex items-center">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+                  <input
+                    id="input-creator-search"
+                    type="text"
+                    value={authorSearch}
+                    onChange={(e) => setAuthorSearch(e.target.value)}
+                    placeholder="Search creators or orgs..."
+                    className="w-full pl-8 pr-7 py-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-hidden focus:ring-1.5 focus:ring-amber-500/40 border border-slate-200 dark:border-slate-700/60 transition-all"
+                  />
+                  {authorSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setAuthorSearch('')}
+                      className="absolute right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+                      aria-label="Clear creator search"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto scrollbar-thin">
-                  <button
-                    onClick={() => onChange({ author: 'all' })}
-                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono transition-all cursor-pointer ${
-                      filter.author === 'all'
-                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-950 border-slate-900 dark:border-white font-semibold'
-                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    All Creators
-                  </button>
-                  {availableAuthors.map((auth) => (
+                  {!authorSearch && (
+                    <button
+                      onClick={() => onChange({ author: 'all' })}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono transition-all cursor-pointer ${
+                        filter.author === 'all'
+                          ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-950 border-slate-900 dark:border-white font-semibold'
+                          : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      All Creators
+                    </button>
+                  )}
+                  {filteredAuthors.map((auth) => (
                     <button
                       key={auth}
                       onClick={() => onChange({ author: auth })}
@@ -276,6 +325,11 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
                       @{auth}
                     </button>
                   ))}
+                  {filteredAuthors.length === 0 && (
+                    <div className="w-full py-2 text-center text-[11px] text-slate-400 italic">
+                      No creators matching "{authorSearch}"
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -159,3 +159,103 @@ export async function fetchHfSemanticSearch(options: {
 
   throw new Error('Unexpected response format from Hugging Face semantic-search API');
 }
+
+/**
+ * Fetches space specification and live API endpoints
+ */
+export async function fetchSpaceInfo(spaceId: string, token?: string) {
+  const url = `/api/space-info?spaceId=${encodeURIComponent(spaceId)}${
+    token ? `&token=${encodeURIComponent(token)}` : ''
+  }`;
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to fetch space info (${res.status})`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Runs a Space prediction endpoint with input data
+ */
+export async function runSpaceEndpoint(
+  spaceId: string,
+  endpoint: string,
+  data: any[],
+  token?: string,
+  subdomain?: string
+) {
+  const res = await fetch('/api/space-run', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      spaceId,
+      endpoint,
+      data,
+      token,
+      subdomain,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `Space execution failed (${res.status})`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Uploads media files (e.g. image inputs) to the Space
+ */
+export async function uploadSpaceFiles(
+  subdomain: string,
+  files: { name: string; base64: string }[],
+  token?: string
+) {
+  const res = await fetch('/api/space-upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      subdomain,
+      files,
+      token,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `File upload failed (${res.status})`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Validates a Hugging Face User Access Token
+ */
+export async function validateHfToken(token: string) {
+  const res = await fetch('/api/validate-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Token validation failed');
+  }
+
+  return res.json();
+}
+
