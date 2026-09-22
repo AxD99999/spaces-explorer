@@ -42,32 +42,32 @@ export const SpaceCard: React.FC<SpaceCardProps> = ({
     >
       <div>
         {/* Top row: Emoji, Author, Title, Space Type, Favourite Button */}
-        <div className="flex items-start justify-between gap-2.5">
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             {/* Space Emoji Icon */}
             <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700/70 border border-slate-200 dark:border-slate-600/70 flex items-center justify-center text-lg shrink-0 select-none shadow-2xs group-hover:scale-105 transition-transform">
               <span>{emoji}</span>
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                 {avatarUrl ? (
                   <img
                     src={avatarUrl}
                     alt={authorName}
-                    className="w-3.5 h-3.5 rounded-full object-cover border border-slate-300 dark:border-slate-600"
+                    className="w-3.5 h-3.5 rounded-full object-cover border border-slate-300 dark:border-slate-600 shrink-0"
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       (e.target as HTMLElement).style.display = 'none';
                     }}
                   />
                 ) : null}
-                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 font-medium truncate max-w-[120px]">
+                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 font-medium truncate max-w-[100px] sm:max-w-[130px]">
                   @{authorName}
                 </span>
 
                 {space.pinned && (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-700 dark:text-amber-300 font-semibold px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">
+                  <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-700 dark:text-amber-300 font-semibold px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20 shrink-0">
                     <Pin className="w-2.5 h-2.5" /> Pinned
                   </span>
                 )}
@@ -81,9 +81,9 @@ export const SpaceCard: React.FC<SpaceCardProps> = ({
           </div>
 
           {/* Top Actions: Space Type Badge & Favourite Button */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 ml-1">
             <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium tracking-tight border whitespace-nowrap ${getSpaceTypeStyle(
+              className={`hidden min-[380px]:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-medium tracking-tight border whitespace-nowrap max-w-[95px] sm:max-w-[130px] truncate ${getSpaceTypeStyle(
                 spaceType
               )}`}
             >
@@ -97,7 +97,7 @@ export const SpaceCard: React.FC<SpaceCardProps> = ({
                 e.stopPropagation();
                 onToggleFavourite?.(space);
               }}
-              className={`p-1.5 rounded-xl border transition-all cursor-pointer ${
+              className={`p-1.5 rounded-xl border transition-all cursor-pointer shrink-0 ${
                 isFavourite
                   ? 'bg-amber-500/15 border-amber-500/35 text-amber-500 shadow-xs'
                   : 'bg-slate-100/80 dark:bg-slate-700/60 border-slate-200/80 dark:border-slate-700 text-slate-400 hover:text-amber-500 hover:bg-amber-500/10 dark:hover:bg-amber-500/10'
@@ -121,11 +121,11 @@ export const SpaceCard: React.FC<SpaceCardProps> = ({
       </div>
 
       {/* Bottom Metadata: Numbers on the left, buttons on the right */}
-      <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between gap-2">
+      <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between gap-2 min-w-0">
         {/* Left side: Likes & Trending numbers */}
-        <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 shrink-0">
           {trendingScore > 0 && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+            <span className="hidden min-[360px]:inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
               <Flame className="w-3 h-3 fill-amber-500/20" />
               <span>{trendingScore}</span>
             </span>
@@ -137,7 +137,7 @@ export const SpaceCard: React.FC<SpaceCardProps> = ({
         </div>
 
         {/* Right side: Click to Run indicator and Details button */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
           <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/20 opacity-90 group-hover:opacity-100 transition-opacity">
             <Play className="w-2.5 h-2.5 fill-amber-600 dark:fill-amber-400" />
             <span>Run</span>
@@ -153,8 +153,8 @@ export const SpaceCard: React.FC<SpaceCardProps> = ({
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer shadow-2xs"
             title="View Space Details & API Documentation"
           >
-            <Info className="w-2.5 h-2.5 text-slate-400" />
-            <span>Details</span>
+            <Info className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+            <span className="hidden min-[340px]:inline">Details</span>
           </button>
         </div>
       </div>

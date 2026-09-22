@@ -551,6 +551,7 @@ export default function App() {
             /* Generated Media View (Images, Videos, Text, Audio, Other) */
             <MediaView
               key="media-view"
+              isPhoneFrame={isPhoneFrame}
               onBackToBrowse={() => setNavView('browse')}
               onOpenSpaceById={(spaceId) => {
                 const sp =
@@ -577,6 +578,7 @@ export default function App() {
             <FavouritesView
               key="favourites-view"
               favouriteSpaces={favourites}
+              isPhoneFrame={isPhoneFrame}
               onToggleFavourite={handleToggleFavourite}
               onRunSpace={(sp) => setRunningSpace(sp)}
               onOpenDetails={(sp) => setDetailsSpace(sp)}

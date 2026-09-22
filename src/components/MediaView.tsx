@@ -19,6 +19,7 @@ import {
   Play,
   Calendar,
   Compass,
+  AlertTriangle,
 } from 'lucide-react';
 import { GeneratedMediaItem, GeneratedMediaType, HfSpace } from '../types';
 import { getAllMediaItems, deleteMediaItem, clearAllMedia } from '../services/mediaStorage';
@@ -26,6 +27,7 @@ import { getAllMediaItems, deleteMediaItem, clearAllMedia } from '../services/me
 interface MediaViewProps {
   onBackToBrowse: () => void;
   onOpenSpaceById?: (spaceId: string) => void;
+  isPhoneFrame?: boolean;
 }
 
 type MediaFilterTab = 'all' | 'image' | 'video' | 'text' | 'audio' | 'other';
@@ -33,6 +35,7 @@ type MediaFilterTab = 'all' | 'image' | 'video' | 'text' | 'audio' | 'other';
 export const MediaView: React.FC<MediaViewProps> = ({
   onBackToBrowse,
   onOpenSpaceById,
+  isPhoneFrame = false,
 }) => {
   const [items, setItems] = useState<GeneratedMediaItem[]>([]);
   const [activeTab, setActiveTab] = useState<MediaFilterTab>('all');
@@ -40,6 +43,11 @@ export const MediaView: React.FC<MediaViewProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedItemForModal, setSelectedItemForModal] = useState<GeneratedMediaItem | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<
+    | { type: 'clear-all' }
+    | { type: 'delete-item'; id: string; title?: string }
+    | null
+  >(null);
 
   // Load items from IndexedDB
   const loadMedia = async () => {
@@ -58,24 +66,31 @@ export const MediaView: React.FC<MediaViewProps> = ({
     loadMedia();
   }, []);
 
-  const handleDelete = async (id: string, e?: React.MouseEvent) => {
+  const handleDelete = (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (confirm('Delete this generated item permanently?')) {
-      await deleteMediaItem(id);
-      setItems((prev) => prev.filter((item) => item.id !== id));
-      if (selectedItemForModal?.id === id) {
-        setSelectedItemForModal(null);
-      }
-    }
+    const targetItem = items.find((i) => i.id === id);
+    setConfirmDialog({ type: 'delete-item', id, title: targetItem?.title });
   };
 
-  const handleClearAll = async () => {
+  const handleClearAll = () => {
     if (items.length === 0) return;
-    if (confirm('Are you sure you want to delete all saved media from device storage?')) {
+    setConfirmDialog({ type: 'clear-all' });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmDialog) return;
+    if (confirmDialog.type === 'clear-all') {
       await clearAllMedia();
       setItems([]);
       setSelectedItemForModal(null);
+    } else if (confirmDialog.type === 'delete-item') {
+      await deleteMediaItem(confirmDialog.id);
+      setItems((prev) => prev.filter((item) => item.id !== confirmDialog.id));
+      if (selectedItemForModal?.id === confirmDialog.id) {
+        setSelectedItemForModal(null);
+      }
     }
+    setConfirmDialog(null);
   };
 
   const handleCopy = (item: GeneratedMediaItem, e?: React.MouseEvent) => {
@@ -183,9 +198,34 @@ export const MediaView: React.FC<MediaViewProps> = ({
         )}
       </header>
 
-      {/* Filter Toggles Bar */}
-      <div className="px-4 py-2 bg-white/70 dark:bg-slate-900/70 border-b border-slate-200/70 dark:border-slate-800/70 flex items-center justify-between gap-3 overflow-x-auto">
-        <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+      {/* Search & Media Filter Toggles Bar */}
+      <div className="px-4 py-2.5 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xs border-b border-slate-200/70 dark:border-slate-800/70 flex flex-col gap-2">
+        {/* Row 1: Search Bar */}
+        {items.length > 0 && (
+          <div className="relative w-full">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search media..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8.5 pr-8 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-1.5 focus:ring-amber-500/40 focus:border-amber-500 transition-all shadow-2xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+                aria-label="Clear search"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Row 2: Media Type Toggles */}
+        <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 scrollbar-thin">
           {(
             [
               { id: 'all', label: 'All', icon: Layers },
@@ -204,7 +244,7 @@ export const MediaView: React.FC<MediaViewProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                   isActive
                     ? 'bg-amber-500 text-slate-950 font-semibold shadow-xs'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
@@ -227,19 +267,6 @@ export const MediaView: React.FC<MediaViewProps> = ({
             );
           })}
         </div>
-
-        {items.length > 0 && (
-          <div className="relative w-40 sm:w-56 shrink-0 hidden sm:block">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search media..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:border-amber-500"
-            />
-          </div>
-        )}
       </div>
 
       {/* Main Content Grid */}
@@ -274,7 +301,7 @@ export const MediaView: React.FC<MediaViewProps> = ({
             No {activeTab === 'all' ? '' : activeTab} media found matching your filter.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+          <div className={isPhoneFrame ? 'flex flex-col space-y-3.5' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5'}>
             {filteredItems.map((item) => (
               <div
                 key={item.id}
@@ -372,33 +399,33 @@ export const MediaView: React.FC<MediaViewProps> = ({
                   </div>
 
                   {/* Footer Actions */}
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs gap-2 min-w-0">
                     <button
                       onClick={(e) => handleCopy(item, e)}
-                      className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer shrink-0"
                     >
                       {copiedId === item.id ? (
                         <span className="text-emerald-500 font-medium">Copied</span>
                       ) : (
                         <>
-                          <Copy className="w-3 h-3" />
+                          <Copy className="w-3 h-3 shrink-0" />
                           <span>Copy</span>
                         </>
                       )}
                     </button>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={(e) => handleDownload(item, e)}
-                        className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                        className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer shrink-0"
                       >
-                        <Download className="w-3 h-3" />
+                        <Download className="w-3 h-3 shrink-0" />
                         <span>Save</span>
                       </button>
 
                       <button
                         onClick={(e) => handleDelete(item.id, e)}
-                        className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                        className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer shrink-0"
                         title="Delete item"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -507,6 +534,53 @@ export const MediaView: React.FC<MediaViewProps> = ({
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* In-App Confirmation Modal (Replaces blocked window.confirm) */}
+      {confirmDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+          onClick={() => setConfirmDialog(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {confirmDialog.type === 'clear-all'
+                    ? 'Clear All Saved Media?'
+                    : 'Delete Media Item?'}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  {confirmDialog.type === 'clear-all'
+                    ? `This will permanently remove all ${items.length} saved media items from device storage. This action cannot be undone.`
+                    : 'This will permanently remove this item from your device storage.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAction}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+              >
+                {confirmDialog.type === 'clear-all' ? 'Yes, Clear All' : 'Yes, Delete'}
+              </button>
             </div>
           </div>
         </div>
