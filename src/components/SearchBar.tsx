@@ -7,8 +7,8 @@ interface SearchBarProps {
   onChange: (updates: Partial<SpaceFilterState>) => void;
   onOpenFilterSheet: () => void;
   activeFilterCount: number;
-  totalSpaces: number;
-  filteredCount: number;
+  totalSpaces?: number;
+  filteredCount?: number;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -16,11 +16,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onChange,
   onOpenFilterSheet,
   activeFilterCount,
-  totalSpaces,
-  filteredCount,
 }) => {
   return (
-    <div id="search-filter-section" className="px-4 py-2.5 space-y-2">
+    <div id="search-filter-section" className="px-4 py-2.5">
       {/* Minimalist Search Input */}
       <div className="relative flex items-center">
         <div className="absolute left-3.5 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center">
@@ -66,33 +64,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             )}
           </button>
         </div>
-      </div>
-
-      {/* Subtle Results & Active Filter Status */}
-      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-0.5 pt-0.5">
-        <span>
-          {filteredCount} {filteredCount === 1 ? 'space' : 'spaces'} {filteredCount !== totalSpaces && `of ${totalSpaces}`}
-        </span>
-        {activeFilterCount > 0 && (
-          <button
-            onClick={() =>
-              onChange({
-                search: '',
-                status: 'all',
-                sdk: 'all',
-                category: 'all',
-                hardware: 'all',
-                author: 'all',
-                pinnedOnly: false,
-                featuredOnly: false,
-                sortBy: 'trending-desc',
-              })
-            }
-            className="text-amber-600 dark:text-amber-400 hover:underline cursor-pointer font-medium"
-          >
-            Clear filters
-          </button>
-        )}
       </div>
     </div>
   );
