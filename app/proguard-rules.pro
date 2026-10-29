@@ -1,6 +1,4 @@
-# Add project specific ProGuard rules here.
--keepattributes *Annotation*
--keepclassmembers class * {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
--keep class com.hfspaces.explorer.data.model.** { *; }
+# kotlinx.serialization, Room, OkHttp and Media3 ship their own consumer rules.
+# Keep line numbers so release crash reports are readable.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

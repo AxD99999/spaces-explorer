@@ -1,12 +1,3 @@
 <resources>
-    <string name="app_name">Hugging Face Spaces</string>
-    <string name="browse_spaces">Browse Spaces</string>
-    <string name="active_spaces">Running Spaces</string>
-    <string name="favorites">Favorites</string>
-    <string name="media_gallery">Generated Media</string>
-    <string name="api_keys">HF API Tokens</string>
-    <string name="search_hint">Search models, authors, SDKs, tags...</string>
-    <string name="filter_spaces">Filter Spaces</string>
-    <string name="run_space">Run Inference</string>
-    <string name="space_details">API Specifications</string>
+    <string name="app_name">HF Spaces</string>
 </resources>
