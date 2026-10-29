@@ -1,0 +1,70 @@
+{
+ "spaces": [
+  {
+   "author": "gradio",
+   "authorData": {"_id": "1", "avatarUrl": "/avatars/gradio.svg", "fullname": "Gradio", "name": "gradio", "type": "org", "isPro": false},
+   "colorFrom": "purple", "colorTo": "indigo",
+   "createdAt": "2026-09-18T14:51:08.000Z",
+   "disabled": false,
+   "emoji": "👋",
+   "id": "gradio/hello_world",
+   "lastModified": "2026-10-17T16:34:04.000Z",
+   "likes": 543,
+   "pinned": true,
+   "private": false,
+   "sdk": "gradio",
+   "repoType": "space",
+   "runtime": {
+    "stage": "RUNNING",
+    "hardware": {"current": "cpu-basic", "requested": "cpu-basic"},
+    "gcTimeout": 172800,
+    "replicas": {"current": 1, "requested": 1},
+    "devMode": false,
+    "domains": [{"domain": "gradio-hello-world.hf.space", "stage": "READY"}],
+    "sha": "7c4acec8081a3b5890a586d21289f6168cfa4481"
+   },
+   "shortDescription": "Say hello",
+   "title": "Hello World",
+   "isLikedByUser": false,
+   "ai_short_description": "Greets you by name",
+   "ai_category": "Text Generation",
+   "trendingScore": 292,
+   "tags": ["gradio", "region:us"],
+   "featured": false,
+   "visibility": "public"
+  },
+  {
+   "author": "example",
+   "id": "example/renamed-space",
+   "likes": 12,
+   "sdk": "gradio",
+   "runtime": {
+    "stage": "SLEEPING",
+    "hardware": {"current": null, "requested": "zero-a10g"},
+    "domains": [{"domain": "example-other-name.hf.space", "stage": "READY"}]
+   },
+   "title": null,
+   "trendingScore": 10,
+   "tags": [],
+   "pinned": false,
+   "featured": true
+  },
+  {
+   "author": "example",
+   "id": "../../etc/passwd",
+   "likes": 1,
+   "sdk": "docker"
+  },
+  {
+   "author": "example",
+   "id": "example/static-site",
+   "likes": null,
+   "sdk": "static",
+   "runtime": {"stage": "RUNNING", "hardware": null, "domains": [{"domain": "example-static-site.static.hf.space", "stage": "READY"}]},
+   "trendingScore": null
+  }
+ ],
+ "numItemsPerPage": 24,
+ "numTotalItems": null,
+ "pageIndex": 0
+}

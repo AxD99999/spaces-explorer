@@ -1,287 +1,190 @@
 package com.hfspaces.explorer.data.repository
 
-import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
-import com.hfspaces.explorer.data.model.*
-import com.hfspaces.explorer.data.remote.HfApiClient
-import kotlinx.coroutines.*
+import com.hfspaces.explorer.data.gradio.FormValue
+import com.hfspaces.explorer.data.gradio.PickedFile
+import com.hfspaces.explorer.data.gradio.SpaceApiSpec
+import com.hfspaces.explorer.data.gradio.SpaceEndpoint
+import com.hfspaces.explorer.data.gradio.UploadedFile
+import com.hfspaces.explorer.data.gradio.buildPayload
+import com.hfspaces.explorer.data.gradio.detectPrompt
+import com.hfspaces.explorer.data.gradio.parseOutputs
+import com.hfspaces.explorer.data.local.dao.TaskDao
+import com.hfspaces.explorer.data.local.entity.TaskEntity
+import com.hfspaces.explorer.data.model.HfSpace
+import com.hfspaces.explorer.data.model.SpaceTask
+import com.hfspaces.explorer.data.model.TaskStatus
+import com.hfspaces.explorer.data.remote.AppJson
+import com.hfspaces.explorer.data.remote.CallUpdate
+import com.hfspaces.explorer.data.remote.GradioClient
+import com.hfspaces.explorer.data.remote.UploadSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.text.SimpleDateFormat
-import java.util.*
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonElement
+import java.io.InputStream
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+/** Reads a picked file's bytes; backed by the ContentResolver on device. */
+fun interface ContentOpener {
+    fun open(uri: String): InputStream
+}
+
+/**
+ * Runs Space calls in an application-wide scope so they keep going while the user browses, and
+ * keeps a persisted history of them.
+ */
 class TaskManager(
-    private val api: HfApiClient,
-    private val mediaRepository: MediaRepository
+    private val scope: CoroutineScope,
+    private val gradio: GradioClient,
+    private val mediaRepository: MediaRepository,
+    private val taskDao: TaskDao,
+    private val contentOpener: ContentOpener
 ) {
-    private val coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private val tasksMap = ConcurrentHashMap<String, ActiveSpaceTask>()
-    private val jobMap = ConcurrentHashMap<String, Job>()
-    private val gson = Gson()
+    private val _tasks = MutableStateFlow<List<SpaceTask>>(emptyList())
+    val tasks: StateFlow<List<SpaceTask>> = _tasks.asStateFlow()
 
-    private val _tasksFlow = MutableStateFlow<List<ActiveSpaceTask>>(emptyList())
-    val tasksFlow: StateFlow<List<ActiveSpaceTask>> = _tasksFlow.asStateFlow()
+    private val _finished = MutableSharedFlow<SpaceTask>(extraBufferCapacity = 8)
 
-    init {
-        // Background ticker for live elapsed time updates
-        coroutineScope.launch {
-            while (isActive) {
-                delay(250)
-                var hasRunning = false
-                val now = System.currentTimeMillis()
-                for ((id, task) in tasksMap) {
-                    if (task.status == TaskStatus.RUNNING) {
-                        hasRunning = true
-                        val elapsed = ((now - task.startTime) / 100.0).toLong() / 10.0
-                        tasksMap[id] = task.copy(elapsedSeconds = elapsed)
-                    }
-                }
-                if (hasRunning) {
-                    emitUpdates()
-                }
-            }
-        }
+    /** Emits each task when it stops running, for "done" notifications. */
+    val finished: SharedFlow<SpaceTask> = _finished.asSharedFlow()
+
+    private val jobs = ConcurrentHashMap<String, Job>()
+
+    /** Loads history; new tasks wait for it so their rows aren't marked interrupted. */
+    private val historyLoaded: Job = scope.launch {
+        taskDao.markInterrupted("Interrupted: the app was closed while this was running", System.currentTimeMillis())
+        val history = taskDao.getAll().mapNotNull { it.toModel() }
+        _tasks.update { current -> (current + history.filter { h -> current.none { it.id == h.id } }).sortedByDescending { it.startTime } }
     }
 
-    private fun emitUpdates() {
-        _tasksFlow.value = tasksMap.values.sortedByDescending { it.startTime }
-    }
+    fun latestForSpace(spaceId: String): SpaceTask? = _tasks.value.firstOrNull { it.space.id == spaceId }
 
-    fun getTask(taskId: String): ActiveSpaceTask? = tasksMap[taskId]
-
-    fun getTaskForSpace(spaceId: String): ActiveSpaceTask? {
-        return tasksMap.values.find { it.space.id == spaceId && it.status == TaskStatus.RUNNING }
-    }
-
-    fun startTask(
+    fun start(
         space: HfSpace,
-        endpoint: String,
-        formValues: Map<String, Any>,
-        payloadData: List<Any?>,
-        token: String? = null,
-        subdomain: String? = null
+        spec: SpaceApiSpec,
+        endpoint: SpaceEndpoint,
+        values: Map<Int, FormValue>,
+        token: String?
     ): String {
-        val taskId = "task_${space.id.replace(Regex("[^a-zA-Z0-9]"), "_")}_${System.currentTimeMillis()}"
-        val task = ActiveSpaceTask(
-            id = taskId,
-            space = space,
-            endpoint = endpoint,
-            formValues = formValues,
-            status = TaskStatus.RUNNING,
-            startTime = System.currentTimeMillis(),
-            elapsedSeconds = 0.0
-        )
-        tasksMap[taskId] = task
-        emitUpdates()
-
-        val job = coroutineScope.launch {
+        val task = SpaceTask(id = "task_${UUID.randomUUID()}", space = space, endpoint = endpoint.name)
+        put(task)
+        val job = scope.launch {
+            historyLoaded.join()
+            persist(task)
             try {
-                val spaceSubdomain = subdomain ?: space.subdomain ?: space.id.replace('/', '-').lowercase()
-                val (rawResult, host) = api.runSpaceInference(spaceSubdomain, endpoint, payloadData, token)
-                val elapsed = ((System.currentTimeMillis() - task.startTime) / 100.0).toLong() / 10.0
-
-                // Extract prompt text from form values if present
-                var detectedPrompt: String? = null
-                for (v in formValues.values) {
-                    if (v is String && v.length > 3 && detectedPrompt == null) {
-                        detectedPrompt = v
+                val uploads = uploadFiles(spec, values, token)
+                val payload = buildPayload(endpoint, values, uploads)
+                val result = gradio.predict(spec.host, spec.apiPrefix, endpoint.name, payload, token) { update ->
+                    when (update) {
+                        CallUpdate.Queued -> modify(task.id) { it.copy(progressMessage = "Waiting in the Space's queue…") }
+                        is CallUpdate.Generating -> modify(task.id) { it.copy(progressMessage = "Generating…", result = update.partial ?: it.result) }
                     }
                 }
-
-                // Extract media items
-                val mediaItems = extractMediaItems(rawResult, space, endpoint, detectedPrompt, elapsed, host)
-                for (m in mediaItems) {
-                    mediaRepository.saveMedia(m)
-                }
-
-                tasksMap[taskId] = task.copy(
-                    status = TaskStatus.COMPLETED,
-                    result = rawResult,
-                    elapsedSeconds = elapsed,
-                    savedMediaIds = mediaItems.map { it.id }
-                )
+                modify(task.id) { it.copy(progressMessage = "Saving outputs…", result = result) }
+                val elapsed = (System.currentTimeMillis() - task.startTime) / 1000.0
+                val outputs = parseOutputs(result, spec.host, spec.apiPrefix, endpoint.returns)
+                val mediaIds = mediaRepository.saveOutputs(outputs, space, endpoint.name, detectPrompt(endpoint, values), elapsed, token)
+                finish(task.id) { it.copy(status = TaskStatus.COMPLETED, result = result, savedMediaIds = mediaIds) }
+            } catch (e: CancellationException) {
+                withContext(NonCancellable) { finish(task.id) { it.copy(status = TaskStatus.CANCELLED, error = "Stopped") } }
+                throw e
             } catch (e: Exception) {
-                val elapsed = ((System.currentTimeMillis() - task.startTime) / 100.0).toLong() / 10.0
-                tasksMap[taskId] = task.copy(
-                    status = TaskStatus.ERROR,
-                    error = e.message ?: "Execution failed",
-                    elapsedSeconds = elapsed
-                )
+                finish(task.id) { it.copy(status = TaskStatus.ERROR, error = e.message ?: e.javaClass.simpleName) }
             } finally {
-                jobMap.remove(taskId)
-                emitUpdates()
+                jobs.remove(task.id)
             }
         }
-        jobMap[taskId] = job
-        return taskId
+        jobs[task.id] = job
+        return task.id
     }
 
-    fun cancelTask(taskId: String) {
-        jobMap[taskId]?.cancel()
-        val task = tasksMap[taskId]
-        if (task != null && task.status == TaskStatus.RUNNING) {
-            tasksMap[taskId] = task.copy(status = TaskStatus.ERROR, error = "Cancelled by user")
-            emitUpdates()
+    /** Cancels the coroutine, which cancels the in-flight HTTP call too. */
+    fun cancel(taskId: String) {
+        jobs[taskId]?.cancel()
+    }
+
+    fun remove(taskId: String) {
+        jobs.remove(taskId)?.cancel()
+        _tasks.update { list -> list.filterNot { it.id == taskId } }
+        scope.launch { taskDao.delete(taskId) }
+    }
+
+    fun clearFinished() {
+        _tasks.update { list -> list.filter { it.isActive } }
+        scope.launch { taskDao.deleteFinished() }
+    }
+
+    private suspend fun uploadFiles(spec: SpaceApiSpec, values: Map<Int, FormValue>, token: String?): Map<String, UploadedFile> {
+        val picked: List<PickedFile> = values.values.filterIsInstance<FormValue.Files>()
+            .flatMap { it.files }
+            .distinctBy { it.uri }
+        if (picked.isEmpty()) return emptyMap()
+        val sources = picked.map { file -> UploadSource(file.name, file.mimeType, file.sizeBytes) { contentOpener.open(file.uri) } }
+        val paths = gradio.upload(spec.host, spec.apiPrefix, sources, token)
+        return picked.zip(paths).associate { (file, path) -> file.uri to UploadedFile(path, file) }
+    }
+
+    private fun put(task: SpaceTask) {
+        _tasks.update { list -> listOf(task) + list.filterNot { it.id == task.id } }
+    }
+
+    private fun modify(taskId: String, change: (SpaceTask) -> SpaceTask) {
+        _tasks.update { list -> list.map { if (it.id == taskId) change(it) else it } }
+    }
+
+    private suspend fun finish(taskId: String, change: (SpaceTask) -> SpaceTask) {
+        modify(taskId) { change(it).copy(endTime = System.currentTimeMillis(), progressMessage = null) }
+        _tasks.value.firstOrNull { it.id == taskId }?.let { done ->
+            persist(done)
+            taskDao.trim(HISTORY_LIMIT)
+            _finished.tryEmit(done)
         }
     }
 
-    fun removeTask(taskId: String) {
-        jobMap[taskId]?.cancel()
-        jobMap.remove(taskId)
-        tasksMap.remove(taskId)
-        emitUpdates()
-    }
-
-    fun clearCompleted() {
-        val toRemove = tasksMap.filter { it.value.status != TaskStatus.RUNNING }.keys
-        for (k in toRemove) {
-            tasksMap.remove(k)
-        }
-        emitUpdates()
-    }
-
-    private fun extractMediaItems(
-        raw: Any?,
-        space: HfSpace,
-        endpoint: String,
-        prompt: String?,
-        elapsedSeconds: Double,
-        host: String
-    ): List<GeneratedMediaItem> {
-        val list = mutableListOf<GeneratedMediaItem>()
-        val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-
-        fun resolveUrl(url: String): String {
-            if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url
-            if (url.startsWith("/")) return "$host$url"
-            return "$host/gradio_api/file=$url"
-        }
-
-        fun processValue(value: Any?, index: Int) {
-            if (value == null) return
-
-            if (value is String) {
-                val trimmed = value.trim()
-                if (trimmed.isEmpty()) return
-
-                // Check if string is a URL to image, video, audio or data URL
-                val isImg = trimmed.matches(Regex(".*\\.(png|jpg|jpeg|webp|gif)$", RegexOption.IGNORE_CASE)) || trimmed.startsWith("data:image/")
-                val isVid = trimmed.matches(Regex(".*\\.(mp4|webm|mov)$", RegexOption.IGNORE_CASE)) || trimmed.startsWith("data:video/")
-                val isAud = trimmed.matches(Regex(".*\\.(mp3|wav|ogg)$", RegexOption.IGNORE_CASE)) || trimmed.startsWith("data:audio/")
-
-                if (isImg) {
-                    list.add(
-                        GeneratedMediaItem(
-                            id = "media_${System.currentTimeMillis()}_$index",
-                            type = GeneratedMediaType.IMAGE,
-                            url = resolveUrl(trimmed),
-                            title = prompt?.take(40) ?: "${space.displayTitle} Image",
-                            prompt = prompt,
-                            spaceId = space.id,
-                            spaceTitle = space.displayTitle,
-                            spaceEmoji = space.displayEmoji,
-                            createdAt = dateStr,
-                            endpoint = endpoint,
-                            elapsedSeconds = elapsedSeconds
-                        )
-                    )
-                } else if (isVid) {
-                    list.add(
-                        GeneratedMediaItem(
-                            id = "media_${System.currentTimeMillis()}_$index",
-                            type = GeneratedMediaType.VIDEO,
-                            url = resolveUrl(trimmed),
-                            title = prompt?.take(40) ?: "${space.displayTitle} Video",
-                            prompt = prompt,
-                            spaceId = space.id,
-                            spaceTitle = space.displayTitle,
-                            spaceEmoji = space.displayEmoji,
-                            createdAt = dateStr,
-                            endpoint = endpoint,
-                            elapsedSeconds = elapsedSeconds
-                        )
-                    )
-                } else if (isAud) {
-                    list.add(
-                        GeneratedMediaItem(
-                            id = "media_${System.currentTimeMillis()}_$index",
-                            type = GeneratedMediaType.AUDIO,
-                            url = resolveUrl(trimmed),
-                            title = prompt?.take(40) ?: "${space.displayTitle} Audio",
-                            prompt = prompt,
-                            spaceId = space.id,
-                            spaceTitle = space.displayTitle,
-                            spaceEmoji = space.displayEmoji,
-                            createdAt = dateStr,
-                            endpoint = endpoint,
-                            elapsedSeconds = elapsedSeconds
-                        )
-                    )
-                } else {
-                    // Text output
-                    list.add(
-                        GeneratedMediaItem(
-                            id = "media_${System.currentTimeMillis()}_$index",
-                            type = GeneratedMediaType.TEXT,
-                            textContent = trimmed,
-                            title = prompt?.take(40) ?: "${space.displayTitle} Text",
-                            prompt = prompt,
-                            spaceId = space.id,
-                            spaceTitle = space.displayTitle,
-                            spaceEmoji = space.displayEmoji,
-                            createdAt = dateStr,
-                            endpoint = endpoint,
-                            elapsedSeconds = elapsedSeconds
-                        )
-                    )
-                }
-                return
-            }
-
-            if (value is List<*>) {
-                value.forEachIndexed { idx, item -> processValue(item, idx) }
-                return
-            }
-
-            // Other JSON objects
-            list.add(
-                GeneratedMediaItem(
-                    id = "media_${System.currentTimeMillis()}_$index",
-                    type = GeneratedMediaType.OTHER,
-                    textContent = value.toString(),
-                    title = "${space.displayTitle} Output",
-                    prompt = prompt,
-                    spaceId = space.id,
-                    spaceTitle = space.displayTitle,
-                    spaceEmoji = space.displayEmoji,
-                    createdAt = dateStr,
-                    endpoint = endpoint,
-                    elapsedSeconds = elapsedSeconds
-                )
+    private suspend fun persist(task: SpaceTask) {
+        taskDao.upsert(
+            TaskEntity(
+                id = task.id,
+                spaceId = task.space.id,
+                spaceJson = AppJson.encodeToString(HfSpace.serializer(), task.space),
+                endpoint = task.endpoint,
+                status = task.status.name,
+                startTime = task.startTime,
+                endTime = task.endTime,
+                error = task.error,
+                resultJson = task.result?.toString()?.takeIf { it.length <= MAX_STORED_RESULT_CHARS },
+                savedMediaIds = task.savedMediaIds.joinToString(",")
             )
-        }
+        )
+    }
 
-        if (raw is String) {
-            try {
-                val jsonArr = gson.fromJson(raw, JsonArray::class.java)
-                for (i in 0 until jsonArr.size()) {
-                    val elem = jsonArr.get(i)
-                    if (elem.isJsonObject && elem.asJsonObject.has("url")) {
-                        processValue(elem.asJsonObject.get("url").asString, i)
-                    } else if (elem.isJsonPrimitive) {
-                        processValue(elem.asString, i)
-                    }
-                }
-            } catch (e: Exception) {
-                processValue(raw, 0)
-            }
-        } else {
-            processValue(raw, 0)
-        }
+    private fun TaskEntity.toModel(): SpaceTask? = runCatching {
+        SpaceTask(
+            id = id,
+            space = AppJson.decodeFromString(HfSpace.serializer(), spaceJson),
+            endpoint = endpoint,
+            status = TaskStatus.valueOf(status),
+            startTime = startTime,
+            endTime = endTime,
+            error = error,
+            result = resultJson?.let { AppJson.parseToJsonElement(it) as JsonElement },
+            savedMediaIds = savedMediaIds.split(',').filter { it.isNotBlank() }
+        )
+    }.getOrNull()
 
-        return list
+    private companion object {
+        const val HISTORY_LIMIT = 100
+        const val MAX_STORED_RESULT_CHARS = 200_000
     }
 }

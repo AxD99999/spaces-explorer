@@ -14,8 +14,8 @@ android {
         applicationId = "com.hfspaces.explorer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -25,7 +25,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -47,12 +48,14 @@ android {
         freeCompilerArgs += listOf(
             "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
             "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi",
             "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
         )
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -60,11 +63,36 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
+    }
+
+    lint {
+        abortOnError = true
+        warningsAsErrors = false
+        checkDependencies = false
+        // Dependency upgrade nags are tracked separately from code health.
+        disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "OldTargetApi")
+    }
+
+    sourceSets {
+        // Exported Room schemas double as fixtures for migration tests.
+        getByName("test").assets.srcDir("$projectDir/schemas")
+    }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
 
@@ -77,25 +105,31 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
 
-    // Networking & Serialization
+    // Networking & serialization
     implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
-    implementation(libs.okhttp.sse)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.gson)
 
     // Image loading
     implementation(libs.coil.compose)
 
-    // Room Database
+    // Room database
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
-    // Media Playback
+    // Media playback
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
 
     debugImplementation(libs.androidx.ui.tooling)
+    debugImplementation(libs.androidx.ui.test.manifest)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
 }
