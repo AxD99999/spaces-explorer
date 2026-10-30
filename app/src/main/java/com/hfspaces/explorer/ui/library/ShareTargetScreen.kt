@@ -45,7 +45,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.hfspaces.explorer.data.model.HfSpace
+import com.hfspaces.explorer.data.model.hidingAdult
 import com.hfspaces.explorer.data.repository.FavoritesRepository
+import com.hfspaces.explorer.data.repository.SettingsRepository
 import com.hfspaces.explorer.data.repository.SpacesRepository
 import com.hfspaces.explorer.data.repository.TaskManager
 import com.hfspaces.explorer.system.DeepLinks
@@ -75,7 +77,8 @@ class SpacePickerViewModel(
     private val spaces: SpacesRepository,
     favorites: FavoritesRepository,
     tasks: TaskManager,
-    private val deepLinks: DeepLinks
+    private val deepLinks: DeepLinks,
+    private val settings: SettingsRepository
 ) : ViewModel() {
     private val query = MutableStateFlow("")
     private val results = MutableStateFlow<List<HfSpace>>(emptyList())
@@ -105,7 +108,7 @@ class SpacePickerViewModel(
         searchJob = viewModelScope.launch {
             delay(400)
             searching.value = true
-            results.value = runCatching { spaces.fetchPage(0, text, sdk = "gradio").spaces.filter { it.isRunnable } }.getOrDefault(emptyList())
+            results.value = runCatching { spaces.fetchPage(0, text, sdk = "gradio").spaces.filter { it.isRunnable }.hidingAdult(settings.settings.value.showAdultSpaces) }.getOrDefault(emptyList())
             searching.value = false
         }
     }

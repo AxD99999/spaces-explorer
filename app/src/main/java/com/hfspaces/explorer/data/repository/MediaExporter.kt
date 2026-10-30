@@ -112,7 +112,7 @@ class MediaExporter(private val context: Context, private val client: OkHttpClie
     }
 
     private companion object {
-        const val ALBUM = "HF Spaces"
+        const val ALBUM = "Spaces Explorer"
     }
 }
 

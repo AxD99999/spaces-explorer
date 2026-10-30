@@ -38,4 +38,13 @@ class HelpersTest {
         assertFalse(SpaceViewModel.mimeMatches("image/*", "audio/wav"))
         assertFalse(SpaceViewModel.mimeMatches("video/*", null))
     }
+
+    @Test
+    fun `adult spaces are recognised by the hub tag and hidden unless shown`() {
+        val adult = HfSpace(id = "x/n", tags = listOf("gradio", "Not-For-All-Audiences"))
+        assertTrue(adult.isAdult)
+        assertFalse(a.isAdult)
+        assertEquals(listOf(a), listOf(a, adult).hidingAdult(show = false))
+        assertEquals(listOf(a, adult), listOf(a, adult).hidingAdult(show = true))
+    }
 }

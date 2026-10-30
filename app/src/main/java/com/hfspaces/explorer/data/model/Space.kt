@@ -104,6 +104,10 @@ data class HfSpace(
     val isRunnable: Boolean
         get() = sdk.equals("gradio", ignoreCase = true)
 
+    /** Tagged by Hugging Face as not suitable for all audiences. */
+    val isAdult: Boolean
+        get() = tags.any { it.equals(ADULT_TAG, ignoreCase = true) }
+
     val avatarUrl: String?
         get() = authorData?.avatarUrl?.let { if (it.startsWith("/")) "https://huggingface.co$it" else it }
 
@@ -161,3 +165,9 @@ val HF_CATEGORIES = listOf(
     SemanticCategory("data-visualization", "Data Viz", "📈"),
     SemanticCategory("ocr", "OCR & Docs", "📄")
 )
+
+/** The Hub tag for adult content. */
+const val ADULT_TAG = "not-for-all-audiences"
+
+/** Drops adult Spaces unless the user has chosen to see them. */
+fun List<HfSpace>.hidingAdult(show: Boolean): List<HfSpace> = if (show) this else filterNot { it.isAdult }
