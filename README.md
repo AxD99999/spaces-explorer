@@ -6,7 +6,7 @@ A native Android app for browsing [Hugging Face Spaces](https://huggingface.co/s
 
 ## Install
 
-Download the APK from the [latest release](https://github.com/AxD99999/HF-Spaces-Explorer/releases/latest) and open it on your phone. You'll need to allow installs from your browser or file manager. Android 8.0 or newer is required.
+Download the APK from the [latest release](https://github.com/AxD99999/spaces-explorer/releases/latest) and open it on your phone. You'll need to allow installs from your browser or file manager. Android 8.0 or newer is required.
 
 ## Features
 

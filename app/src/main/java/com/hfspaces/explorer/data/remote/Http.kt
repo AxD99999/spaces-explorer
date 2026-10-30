@@ -21,7 +21,7 @@ val AppJson = Json {
     isLenient = true
 }
 
-const val USER_AGENT = "HF-Spaces-Explorer-Android/${BuildConfig.VERSION_NAME}"
+const val USER_AGENT = "SpacesExplorer-Android/${BuildConfig.VERSION_NAME} (+https://github.com/AxD99999/spaces-explorer)"
 
 fun defaultOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
     .connectTimeout(20, TimeUnit.SECONDS)
