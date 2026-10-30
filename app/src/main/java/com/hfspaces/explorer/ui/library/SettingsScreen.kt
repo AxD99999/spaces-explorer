@@ -168,7 +168,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     }
 }
 
-private const val SOURCE_URL = "https://github.com/AxD99999/HF-Spaces-Explorer"
+private const val SOURCE_URL = "https://github.com/AxD99999/spaces-explorer"
 
 @Composable
 private fun SwitchSetting(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
