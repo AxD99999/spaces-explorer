@@ -3,7 +3,10 @@ package com.hfspaces.explorer.data.local
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
+import com.hfspaces.explorer.data.gradio.FormValue
 import com.hfspaces.explorer.data.repository.ApiKeysRepository
+import com.hfspaces.explorer.data.repository.CollectionsRepository
+import com.hfspaces.explorer.data.repository.PresetsRepository
 import com.hfspaces.explorer.data.repository.FavoritesRepository
 import com.hfspaces.explorer.testing.FakeTokenCipher
 import kotlinx.coroutines.flow.first
@@ -63,6 +66,15 @@ class MigrationTest {
             assertEquals("a cat", media.prompt)
             assertNull(media.localPath)
             assertTrue(database.taskDao().getAll().isEmpty())
+
+            // v3 tables exist and work after migrating all the way from v1.
+            val presets = PresetsRepository(database.presetDao())
+            presets.save("gradio/hello_world", "/predict", "Mine", mapOf(0 to FormValue.Text("hi")))
+            assertEquals("Mine", presets.observe("gradio/hello_world").first().single().name)
+            val collections = CollectionsRepository(database.collectionDao())
+            val colId = collections.create("Image tools")
+            collections.setMember(colId, "gradio/hello_world", true)
+            assertEquals(1, collections.observe().first().single().count)
         } finally {
             database.close()
             context.deleteDatabase(name)

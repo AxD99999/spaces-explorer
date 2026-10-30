@@ -1,6 +1,7 @@
 package com.hfspaces.explorer.data.repository
 
 import com.hfspaces.explorer.data.local.dao.ApiKeysDao
+import com.hfspaces.explorer.data.local.dao.CollectionDao
 import com.hfspaces.explorer.data.local.dao.FavoritesDao
 import com.hfspaces.explorer.data.local.entity.ApiKeyEntity
 import com.hfspaces.explorer.data.local.entity.FavoriteSpaceEntity
@@ -16,7 +17,10 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-class FavoritesRepository(private val dao: FavoritesDao) {
+class FavoritesRepository(
+    private val dao: FavoritesDao,
+    private val collections: CollectionDao? = null
+) {
     fun observe(): Flow<List<HfSpace>> = dao.observeAll().map { rows -> rows.map { it.toHfSpace() } }
 
     /** Returns true if the Space is now a favourite. */
@@ -24,6 +28,7 @@ class FavoritesRepository(private val dao: FavoritesDao) {
         val existing = dao.get(space.id)
         return if (existing != null) {
             dao.delete(space.id)
+            collections?.removeSpaceEverywhere(space.id)
             false
         } else {
             dao.insert(FavoriteSpaceEntity.fromHfSpace(space))
@@ -40,6 +45,13 @@ class FavoritesRepository(private val dao: FavoritesDao) {
     }
 
     suspend fun getAll(): List<HfSpace> = dao.getAll().map { it.toHfSpace() }
+
+    /** Adds a Space unless already saved; returns true if it was new. */
+    suspend fun addIfMissing(space: HfSpace): Boolean {
+        if (dao.get(space.id) != null) return false
+        dao.insert(FavoriteSpaceEntity.fromHfSpace(space))
+        return true
+    }
 }
 
 class ApiKeysRepository(

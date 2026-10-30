@@ -96,4 +96,74 @@ class HfHubClientTest {
         server.enqueue(MockResponse().setBody("""{"name":"ada","fullname":"Ada L","type":"user"}"""))
         assertEquals("Ada L", hub.whoAmI("hf_good")?.fullname)
     }
+
+    @Test
+    fun `server side sort and sdk are sent to the hub`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"spaces":[],"numItemsPerPage":24}"""))
+        hub.fetchSpacesPage(1, null, HubSort.LIKES, "gradio")
+        assertEquals("/spaces-json?p=1&includeNonRunning=true&withCount=false&sort=likes&sdk=gradio", server.takeRequest().path)
+        server.enqueue(MockResponse().setBody("""{"spaces":[]}"""))
+        hub.fetchSpacesPage(0, null, HubSort.TRENDING, "all")
+        assertEquals("/spaces-json?p=0&includeNonRunning=true&withCount=false", server.takeRequest().path)
+    }
+
+    @Test
+    fun `likes keep only valid space ids`() = runBlocking {
+        // Shape captured from /api/users/{name}/likes.
+        server.enqueue(
+            MockResponse().setBody(
+                """[{"createdAt":"2026-10-29T17:06:50.000Z","repo":{"name":"someone/dataset","type":"dataset"}},
+                    {"repo":{"name":"gradio/hello_world","type":"space"}},{"repo":{"name":"../evil","type":"space"}}]"""
+            )
+        )
+        assertEquals(listOf("gradio/hello_world"), hub.likedSpaceIds("ada"))
+        assertEquals("/api/users/ada/likes", server.takeRequest().path)
+        assertTrue(runCatching { hub.likedSpaceIds("../x") }.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun `author listing and runtime`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""[{"id":"ada/one","likes":3,"sdk":"gradio"},{"id":"ada/two","private":true}]"""))
+        assertEquals(listOf("ada/one", "ada/two"), hub.spacesByAuthor("ada", "hf_t").map { it.id })
+        val list = server.takeRequest()
+        assertEquals("/api/spaces?author=ada&limit=100&full=true", list.path)
+        assertEquals("Bearer hf_t", list.getHeader("Authorization"))
+
+        server.enqueue(MockResponse().setBody("""{"stage":"SLEEPING","hardware":{"current":null,"requested":"cpu-basic"}}"""))
+        assertEquals("SLEEPING", hub.fetchRuntime("ada/one", null).stage)
+        assertEquals("/api/spaces/ada/one/runtime", server.takeRequest().path)
+    }
+
+    @Test
+    fun `owner actions post with the token and explain permission errors`() = runBlocking {
+        server.enqueue(MockResponse().setBody("{}"))
+        hub.restartSpace("ada/one", "hf_w", factory = true)
+        val restart = server.takeRequest()
+        assertEquals("POST /api/spaces/ada/one/restart?factory=true", "${restart.method} ${restart.path}")
+        assertEquals("Bearer hf_w", restart.getHeader("Authorization"))
+
+        server.enqueue(MockResponse().setBody("{}"))
+        hub.requestHardware("ada/one", "hf_w", "t4-small")
+        assertEquals("""{"flavor":"t4-small"}""", server.takeRequest().body.readUtf8())
+
+        server.enqueue(MockResponse().setResponseCode(403))
+        val error = runCatching { hub.pauseSpace("ada/one", "hf_r") }.exceptionOrNull()
+        assertTrue(error is HttpStatusException && error.message!!.contains("write access"))
+        assertTrue(runCatching { hub.requestHardware("ada/one", "hf_w", "a10g\"; rm") }.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun `logs stream line by line`() = runBlocking {
+        server.enqueue(
+            MockResponse().setHeader("Content-Type", "text/event-stream").setBody(
+                "data: {\"data\":\"Running on local URL\\n\",\"timestamp\":\"t1\"}\n\n" +
+                    ": keepalive\n\n" +
+                    "data: {\"data\":\"Model loaded\",\"timestamp\":\"t2\"}\n\n"
+            )
+        )
+        val lines = mutableListOf<String>()
+        hub.streamLogs("ada/one", "hf_w", LogKind.RUN) { lines += it }
+        assertEquals(listOf("Running on local URL", "Model loaded"), lines)
+        assertEquals("/api/spaces/ada/one/logs/run", server.takeRequest().path)
+    }
 }

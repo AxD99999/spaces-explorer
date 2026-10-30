@@ -39,11 +39,16 @@ class SpaceFiltersTest {
     }
 
     @Test
-    fun `remote query changes only on search text or category`() {
+    fun `remote query changes on search category sdk and server sorts only`() {
         val base = SpaceFilterState(search = "flux")
-        assertFalse(base.remoteQueryDiffers(base.copy(search = " flux ", sortBy = SortOption.LIKES_DESC, pinnedOnly = true)))
+        // Local-only changes keep the loaded pages.
+        assertFalse(base.remoteQueryDiffers(base.copy(search = " flux ", pinnedOnly = true, hardware = "t4-small")))
+        assertFalse(base.remoteQueryDiffers(base.copy(sortBy = SortOption.NAME_ASC)))
+        // These are answered by the Hub.
         assertTrue(base.remoteQueryDiffers(base.copy(search = "sdxl")))
         assertTrue(base.remoteQueryDiffers(base.copy(category = "chatbots")))
+        assertTrue(base.remoteQueryDiffers(base.copy(sdk = "gradio")))
+        assertTrue(base.remoteQueryDiffers(base.copy(sortBy = SortOption.LIKES_DESC)))
     }
 
     @Test

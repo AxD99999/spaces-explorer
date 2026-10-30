@@ -6,18 +6,19 @@ enum class StatusFilter(val label: String) {
     SLEEPING("Sleeping")
 }
 
-enum class SortOption(val displayName: String) {
-    TRENDING_DESC("Trending"),
-    LIKES_DESC("Most likes"),
-    RECENT_DESC("Recently updated"),
-    CREATED_DESC("Newest"),
-    NAME_ASC("Name (A–Z)"),
-    NAME_DESC("Name (Z–A)")
+/** [serverKey] is the Hub's `sort` value; null means the order is applied locally (or is the default). */
+enum class SortOption(val displayName: String, val serverKey: String?) {
+    TRENDING_DESC("Trending", null),
+    LIKES_DESC("Most likes", "likes"),
+    RECENT_DESC("Recently updated", "modified"),
+    CREATED_DESC("Newest", "created"),
+    NAME_ASC("Name (A–Z)", null),
+    NAME_DESC("Name (Z–A)", null)
 }
 
 /**
- * Browse filters. [search] and [category] are sent to the Hub; everything else is applied
- * locally to the pages loaded so far (see [applyLocalFilters]).
+ * Browse filters. [search], [category], [sdk] and server-backed sorts are sent to the Hub;
+ * the rest is applied locally to the pages loaded so far (see [applyLocalFilters]).
  */
 data class SpaceFilterState(
     val search: String = "",
@@ -45,7 +46,10 @@ data class SpaceFilterState(
 
     /** True when the remote query differs, i.e. the loaded pages must be thrown away. */
     fun remoteQueryDiffers(other: SpaceFilterState): Boolean =
-        search.trim() != other.search.trim() || category != other.category
+        search.trim() != other.search.trim() ||
+            category != other.category ||
+            sdk != other.sdk ||
+            sortBy.serverKey != other.sortBy.serverKey
 }
 
 fun List<HfSpace>.applyLocalFilters(filter: SpaceFilterState): List<HfSpace> {

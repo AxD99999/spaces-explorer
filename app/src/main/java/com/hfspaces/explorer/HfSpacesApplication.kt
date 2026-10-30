@@ -10,6 +10,8 @@ open class HfSpacesApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = createContainer()
+        registerActivityLifecycleCallbacks(container.visibility)
+        container.startSystemIntegrations()
         container.applicationScope.launch { container.uploadStaging.prune() }
     }
 

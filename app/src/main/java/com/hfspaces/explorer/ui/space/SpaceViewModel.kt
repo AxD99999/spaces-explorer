@@ -4,7 +4,18 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.hfspaces.explorer.data.gradio.ChatShape
 import com.hfspaces.explorer.data.gradio.FormValue
+import com.hfspaces.explorer.data.gradio.InputKind
+import com.hfspaces.explorer.data.gradio.chatShape
+import com.hfspaces.explorer.data.gradio.withoutMissingFiles
+import com.hfspaces.explorer.data.model.SpaceStage
+import com.hfspaces.explorer.data.repository.InputPreset
+import com.hfspaces.explorer.data.repository.PresetsRepository
+import com.hfspaces.explorer.system.DeepLinks
+import com.hfspaces.explorer.system.SharedContent
+import kotlinx.coroutines.delay
+import java.io.File
 import com.hfspaces.explorer.data.gradio.InvalidInputException
 import com.hfspaces.explorer.data.gradio.PickedFile
 import com.hfspaces.explorer.data.gradio.SpaceApiSpec
@@ -45,6 +56,12 @@ sealed interface SpecState {
     data class Failed(val message: String) : SpecState
 }
 
+sealed interface WakeState {
+    data object Idle : WakeState
+    data class Waking(val stage: String) : WakeState
+    data class Failed(val message: String) : WakeState
+}
+
 data class SpaceUiState(
     val spaceId: String,
     val space: HfSpace? = null,
@@ -59,8 +76,13 @@ data class SpaceUiState(
     /** Files being copied into app storage, by parameter index. */
     val stagingInputs: Set<Int> = emptySet(),
     val inputError: String? = null,
-    val task: SpaceTask? = null
+    val task: SpaceTask? = null,
+    val presets: List<InputPreset> = emptyList(),
+    val wake: WakeState = WakeState.Idle
 ) {
+    /** Non-null when the selected endpoint can be used as a chat. */
+    val chatShape: ChatShape? get() = endpoint?.chatShape()
+    val canWake: Boolean get() = space?.stage == SpaceStage.SLEEPING || space?.stage == SpaceStage.BUILDING
     val readySpec: SpaceApiSpec? get() = (spec as? SpecState.Ready)?.spec
     val endpoint: SpaceEndpoint? get() = readySpec?.endpoints?.let { eps -> eps.firstOrNull { it.name == selectedEndpoint } ?: eps.firstOrNull() }
     val selectedKey: UserApiKey? get() = apiKeys.firstOrNull { it.id == selectedKeyId }
@@ -75,9 +97,18 @@ class SpaceViewModel(
     apiKeys: ApiKeysRepository,
     private val taskManager: TaskManager,
     private val drafts: FormDraftStore,
-    private val staging: UploadStaging
+    private val staging: UploadStaging,
+    private val presets: PresetsRepository,
+    private val deepLinks: DeepLinks
 ) : ViewModel() {
     val spaceId: String = checkNotNull(savedStateHandle.get<String>(ARG_SPACE_ID)) { "Missing space id" }
+
+    /** Set when opened via "Run again" from history. */
+    private var fromTaskId: String? = savedStateHandle.get<String>(ARG_FROM_TASK)?.takeIf { it.isNotBlank() }
+
+    /** Set when opened from the share sheet; shared content is applied once the form exists. */
+    private var applyShare: Boolean = savedStateHandle.get<Boolean>(ARG_FROM_SHARE) == true
+    private var wakeJob: Job? = null
 
     private val local = MutableStateFlow(SpaceUiState(spaceId = spaceId))
     private val messages = Channel<String>(Channel.BUFFERED)
@@ -93,13 +124,20 @@ class SpaceViewModel(
         local,
         keys,
         favorites.observe().map { list -> list.any { it.id == spaceId } },
-        taskManager.tasks.map { list -> list.firstOrNull { it.space.id == spaceId } }
-    ) { state, keys, isFavorite, task ->
+        taskManager.tasks.map { list -> list.firstOrNull { it.space.id == spaceId } },
+        presets.observe(spaceId)
+    ) { state, keys, isFavorite, task, presetList ->
         val keyId = when {
             keyChosen -> state.selectedKeyId?.takeIf { id -> keys.any { it.id == id } }
             else -> keys.firstOrNull { it.isDefault }?.id ?: keys.firstOrNull()?.id
         }
-        state.copy(apiKeys = keys, selectedKeyId = keyId, isFavorite = isFavorite, task = task)
+        state.copy(
+            apiKeys = keys,
+            selectedKeyId = keyId,
+            isFavorite = isFavorite,
+            task = task,
+            presets = presetList.filter { p -> state.readySpec?.endpoints?.any { it.name == p.endpoint } ?: true }
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), local.value)
 
     init {
@@ -148,12 +186,132 @@ class SpaceViewModel(
                         ?: spec.endpoints.firstOrNull()?.name
                     state.copy(spec = SpecState.Ready(spec), selectedEndpoint = endpoint, formValues = formFor(spec, endpoint))
                 }
+                restoreFromTask(spec)
+                if (applyShare) {
+                    applyShare = false
+                    deepLinks.takeShared()?.let(::applyShared)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 local.update { it.copy(spec = SpecState.Failed(e.userMessage())) }
             }
         }
+    }
+
+    /** "Run again": load the inputs of a past run (files only if their staged copy still exists). */
+    private fun restoreFromTask(spec: SpaceApiSpec) {
+        val id = fromTaskId ?: return
+        fromTaskId = null
+        val task = taskManager.find(id) ?: return
+        val inputs = task.inputs ?: run {
+            messages.trySend("That run didn't record its inputs")
+            return
+        }
+        val endpoint = spec.endpoints.firstOrNull { it.name == task.endpoint } ?: run {
+            messages.trySend("The Space no longer has ${task.endpoint}")
+            return
+        }
+        val restored = inputs.withoutMissingFiles { uri -> uri.startsWith("file:") && File(Uri.parse(uri).path.orEmpty()).exists() }
+            .filterKeys { it in endpoint.parameters.indices }
+        drafts.put(spaceId, endpoint.name, restored)
+        local.update { it.copy(selectedEndpoint = endpoint.name, formValues = formFor(spec, endpoint.name)) }
+        if (restored != inputs.filterKeys { it in endpoint.parameters.indices }) messages.trySend("Some files from that run are gone; pick them again")
+    }
+
+    /** Puts shared files and text into the first inputs that accept them. */
+    private fun applyShared(content: SharedContent) {
+        val endpoint = local.value.endpoint ?: return
+        val kinds = endpoint.parameters.map { it.inputKind() }
+        val applied = mutableListOf<String>()
+        if (content.files.isNotEmpty()) {
+            val fileIndex = kinds.indices.firstOrNull { i ->
+                val kind = kinds[i] as? InputKind.File ?: return@firstOrNull false
+                content.files.all { mimeMatches(kind.mimeType, it.mimeType) }
+            } ?: kinds.indices.firstOrNull { kinds[it] is InputKind.File }
+            if (fileIndex != null) {
+                val kind = kinds[fileIndex] as InputKind.File
+                updateValue(fileIndex, FormValue.Files(if (kind.multiple) content.files else content.files.take(1)))
+                applied += endpoint.parameters[fileIndex].displayLabel
+            }
+        }
+        content.text?.let { text ->
+            val textIndex = endpoint.chatShape()?.messageIndex ?: kinds.indices.firstOrNull { kinds[it] is InputKind.Text }
+            if (textIndex != null) {
+                updateValue(textIndex, FormValue.Text(text))
+                applied += endpoint.parameters[textIndex].displayLabel
+            }
+        }
+        messages.trySend(
+            if (applied.isEmpty()) "This Space has no input for what you shared"
+            else "Added what you shared to “${applied.joinToString("” and “")}”"
+        )
+    }
+
+    /** Wakes a sleeping Space and waits until it's running, then reloads its API. */
+    fun wake() {
+        val space = local.value.space ?: return
+        if (wakeJob?.isActive == true) return
+        wakeJob = viewModelScope.launch {
+            local.update { it.copy(wake = WakeState.Waking("Starting…")) }
+            val token = currentToken()
+            spaces.poke(space, token)
+            val deadline = System.currentTimeMillis() + WAKE_TIMEOUT_MS
+            try {
+                while (System.currentTimeMillis() < deadline) {
+                    val runtime = spaces.fetchRuntime(space.id, token)
+                    val stage = SpaceStage.from(runtime.stage)
+                    local.update { it.copy(space = it.space?.copy(runtime = runtime), wake = WakeState.Waking(runtime.stage?.lowercase()?.replace('_', ' ') ?: "starting")) }
+                    when (stage) {
+                        SpaceStage.RUNNING -> {
+                            local.update { it.copy(wake = WakeState.Idle) }
+                            spaces.invalidateSpec(space.id)
+                            loadSpec(force = true)
+                            messages.trySend("${space.displayTitle} is awake")
+                            return@launch
+                        }
+                        SpaceStage.ERROR -> {
+                            local.update { it.copy(wake = WakeState.Failed(runtime.errorMessage?.take(200) ?: "The Space failed to start")) }
+                            return@launch
+                        }
+                        SpaceStage.PAUSED -> {
+                            local.update { it.copy(wake = WakeState.Failed("The owner has paused this Space")) }
+                            return@launch
+                        }
+                        else -> delay(WAKE_POLL_MS)
+                    }
+                }
+                local.update { it.copy(wake = WakeState.Failed("Still starting after 5 minutes. Try again later.")) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                local.update { it.copy(wake = WakeState.Failed(e.userMessage())) }
+            }
+        }
+    }
+
+    fun savePreset(name: String) {
+        val state = local.value
+        val endpoint = state.selectedEndpoint ?: return
+        viewModelScope.launch {
+            presets.save(spaceId, endpoint, name, state.formValues)
+            val hadFiles = state.formValues.values.any { it is FormValue.Files && it.files.isNotEmpty() }
+            messages.trySend(if (hadFiles) "Preset saved (files aren't kept in presets)" else "Preset saved")
+        }
+    }
+
+    fun applyPreset(preset: InputPreset) {
+        val spec = local.value.readySpec ?: return
+        if (spec.endpoints.none { it.name == preset.endpoint }) return
+        val current = drafts.get(spaceId, preset.endpoint).orEmpty()
+        // Keep any files already picked; presets don't store them.
+        drafts.put(spaceId, preset.endpoint, current.filterValues { it is FormValue.Files } + preset.values)
+        local.update { it.copy(selectedEndpoint = preset.endpoint, formValues = formFor(spec, preset.endpoint), inputError = null) }
+        messages.trySend("Applied “${preset.name}”")
+    }
+
+    fun deletePreset(id: String) {
+        viewModelScope.launch { presets.delete(id) }
     }
 
     fun selectEndpoint(name: String) {
@@ -252,5 +410,15 @@ class SpaceViewModel(
 
     companion object {
         const val ARG_SPACE_ID = "spaceId"
+        const val ARG_FROM_TASK = "fromTask"
+        const val ARG_FROM_SHARE = "fromShare"
+        private const val WAKE_TIMEOUT_MS = 5 * 60 * 1000L
+        private const val WAKE_POLL_MS = 3_000L
+
+        fun mimeMatches(pattern: String, mime: String?): Boolean {
+            if (pattern == "*/*") return true
+            val actual = mime ?: return false
+            return if (pattern.endsWith("/*")) actual.startsWith(pattern.removeSuffix("*")) else actual == pattern
+        }
     }
 }

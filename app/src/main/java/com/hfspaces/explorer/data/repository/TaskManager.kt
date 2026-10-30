@@ -6,6 +6,8 @@ import com.hfspaces.explorer.data.gradio.SpaceApiSpec
 import com.hfspaces.explorer.data.gradio.SpaceEndpoint
 import com.hfspaces.explorer.data.gradio.UploadedFile
 import com.hfspaces.explorer.data.gradio.buildPayload
+import com.hfspaces.explorer.data.gradio.decodeFormValues
+import com.hfspaces.explorer.data.gradio.encodeFormValues
 import com.hfspaces.explorer.data.gradio.detectPrompt
 import com.hfspaces.explorer.data.gradio.parseOutputs
 import com.hfspaces.explorer.data.local.dao.TaskDao
@@ -70,6 +72,13 @@ class TaskManager(
 
     fun latestForSpace(spaceId: String): SpaceTask? = _tasks.value.firstOrNull { it.space.id == spaceId }
 
+    fun find(taskId: String): SpaceTask? = _tasks.value.firstOrNull { it.id == taskId }
+
+    /** Stops every active run, e.g. from the notification. */
+    fun cancelAll() {
+        _tasks.value.filter { it.isActive }.forEach { cancel(it.id) }
+    }
+
     fun start(
         space: HfSpace,
         spec: SpaceApiSpec,
@@ -77,7 +86,7 @@ class TaskManager(
         values: Map<Int, FormValue>,
         token: String?
     ): String {
-        val task = SpaceTask(id = "task_${UUID.randomUUID()}", space = space, endpoint = endpoint.name)
+        val task = SpaceTask(id = "task_${UUID.randomUUID()}", space = space, endpoint = endpoint.name, inputs = values)
         put(task)
         val job = scope.launch {
             historyLoaded.join()
@@ -86,10 +95,7 @@ class TaskManager(
                 val uploads = uploadFiles(spec, values, token)
                 val payload = buildPayload(endpoint, values, uploads)
                 val result = gradio.predict(spec.host, spec.apiPrefix, endpoint.name, payload, token) { update ->
-                    when (update) {
-                        CallUpdate.Queued -> modify(task.id) { it.copy(progressMessage = "Waiting in the Space's queue…") }
-                        is CallUpdate.Generating -> modify(task.id) { it.copy(progressMessage = "Generating…", result = update.partial ?: it.result) }
-                    }
+                    modify(task.id) { current -> current.withUpdate(update) }
                 }
                 modify(task.id) { it.copy(progressMessage = "Saving outputs…", result = result) }
                 val elapsed = (System.currentTimeMillis() - task.startTime) / 1000.0
@@ -144,7 +150,16 @@ class TaskManager(
     }
 
     private suspend fun finish(taskId: String, change: (SpaceTask) -> SpaceTask) {
-        modify(taskId) { change(it).copy(endTime = System.currentTimeMillis(), progressMessage = null) }
+        modify(taskId) {
+            change(it).copy(
+                endTime = System.currentTimeMillis(),
+                progressMessage = null,
+                queueRank = null,
+                queueSize = null,
+                etaSeconds = null,
+                progressFraction = null
+            )
+        }
         _tasks.value.firstOrNull { it.id == taskId }?.let { done ->
             persist(done)
             taskDao.trim(HISTORY_LIMIT)
@@ -164,7 +179,8 @@ class TaskManager(
                 endTime = task.endTime,
                 error = task.error,
                 resultJson = task.result?.toString()?.takeIf { it.length <= MAX_STORED_RESULT_CHARS },
-                savedMediaIds = task.savedMediaIds.joinToString(",")
+                savedMediaIds = task.savedMediaIds.joinToString(","),
+                inputsJson = task.inputs?.let(::encodeFormValues)
             )
         )
     }
@@ -179,9 +195,29 @@ class TaskManager(
             endTime = endTime,
             error = error,
             result = resultJson?.let { AppJson.parseToJsonElement(it) as JsonElement },
-            savedMediaIds = savedMediaIds.split(',').filter { it.isNotBlank() }
+            savedMediaIds = savedMediaIds.split(',').filter { it.isNotBlank() },
+            inputs = decodeFormValues(inputsJson)
         )
     }.getOrNull()
+
+    private fun SpaceTask.withUpdate(update: CallUpdate): SpaceTask = when (update) {
+        is CallUpdate.Queued -> copy(
+            progressMessage = when {
+                update.rank == null -> "Waiting in the Space's queue…"
+                update.rank == 0 -> "Next in the queue"
+                else -> "Position ${update.rank + 1}${update.queueSize?.let { " of $it" } ?: ""} in the queue"
+            },
+            queueRank = update.rank,
+            queueSize = update.queueSize,
+            etaSeconds = update.etaSeconds
+        )
+        is CallUpdate.Started -> copy(progressMessage = "Running…", queueRank = null, etaSeconds = update.etaSeconds)
+        is CallUpdate.Progress -> copy(
+            progressMessage = update.description ?: progressMessage ?: "Running…",
+            progressFraction = update.fraction
+        )
+        is CallUpdate.Generating -> copy(progressMessage = "Generating…", queueRank = null, result = update.partial ?: result)
+    }
 
     private companion object {
         const val HISTORY_LIMIT = 100

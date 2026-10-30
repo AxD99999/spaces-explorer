@@ -73,6 +73,15 @@ class MediaRepository(
         }
     }
 
+    suspend fun latest(): GeneratedMediaItem? = dao.latest()?.toModel()
+
+    suspend fun get(id: String): GeneratedMediaItem? = dao.get(id)?.toModel()
+
+    /** Local copy of the first image among [ids], for notification thumbnails. */
+    suspend fun firstImagePath(ids: List<String>): String? =
+        if (ids.isEmpty()) null
+        else dao.getAll(ids).firstOrNull { it.type == GeneratedMediaType.IMAGE.name && it.localPath != null }?.localPath
+
     suspend fun delete(id: String) {
         dao.get(id)?.localPath?.let { path -> withContext(Dispatchers.IO) { File(path).delete() } }
         dao.delete(id)

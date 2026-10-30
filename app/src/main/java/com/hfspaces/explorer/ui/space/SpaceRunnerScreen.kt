@@ -17,6 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Bedtime
@@ -49,6 +51,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -76,14 +80,30 @@ fun SpaceRunnerScreen(
     viewModel: SpaceViewModel,
     onBack: () -> Unit,
     onOpenDetails: (String) -> Unit,
-    onManageKeys: () -> Unit
+    onManageKeys: () -> Unit,
+    onOpenChat: (String) -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showPresets by rememberSaveable { mutableStateOf(false) }
     val snackbar = LocalSnackbarHostState.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.showSnackbar(it) } }
     val endpoint = state.endpoint
     val canRun = endpoint != null && !state.isRunning && state.stagingInputs.isEmpty()
+
+    if (showPresets) {
+        PresetsDialog(
+            presets = state.presets,
+            canSave = state.endpoint != null,
+            onApply = {
+                viewModel.applyPreset(it)
+                showPresets = false
+            },
+            onDelete = { viewModel.deletePreset(it.id) },
+            onSave = viewModel::savePreset,
+            onDismiss = { showPresets = false }
+        )
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -97,6 +117,12 @@ fun SpaceRunnerScreen(
                 },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") } },
                 actions = {
+                    if (state.chatShape != null) {
+                        IconButton(onClick = { onOpenChat(state.spaceId) }) { Icon(Icons.AutoMirrored.Outlined.Chat, contentDescription = "Open as chat") }
+                    }
+                    if (state.readySpec != null) {
+                        IconButton(onClick = { showPresets = true }) { Icon(Icons.Outlined.BookmarkBorder, contentDescription = "Presets") }
+                    }
                     IconButton(onClick = { onOpenDetails(state.spaceId) }) { Icon(Icons.Outlined.Info, contentDescription = "Space details and API") }
                 }
             )
@@ -130,7 +156,12 @@ fun SpaceRunnerScreen(
         val spec = state.spec
         when {
             state.space == null && state.spaceError != null -> FullScreenBox { ErrorState(state.spaceError!!, onRetry = viewModel::retry) }
-            spec is SpecState.Failed -> FullScreenBox { ErrorState(spec.message, onRetry = viewModel::retry) }
+            spec is SpecState.Failed -> FullScreenBox {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
+                    if (state.canWake || state.wake !is WakeState.Idle) WakeCard(state.wake, onWake = viewModel::wake)
+                    ErrorState(spec.message, onRetry = viewModel::retry)
+                }
+            }
             spec is SpecState.Loading -> FullScreenBox {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     CircularProgressIndicator()
@@ -148,7 +179,7 @@ fun SpaceRunnerScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (state.space?.stage == SpaceStage.SLEEPING) Banner(Icons.Outlined.Bedtime, "This Space is asleep. The first run wakes it and can take a minute or two.")
+                if (state.canWake || state.wake !is WakeState.Idle) WakeCard(state.wake, onWake = viewModel::wake)
                 if (state.space?.stage == SpaceStage.ERROR) Banner(Icons.Outlined.ErrorOutline, "Hugging Face reports this Space as broken; runs will probably fail.")
 
                 val endpoints = state.readySpec?.endpoints.orEmpty()
@@ -293,12 +324,24 @@ private fun TaskStatusCard(task: SpaceTask) {
         TaskStatus.CANCELLED -> "Stopped" to colors.neutral
     }
     SectionCard(title) {
+        val eta = task.etaSeconds?.takeIf { task.isActive && it >= 1 }?.let { " · ~${it.roundToInt()}s left" } ?: ""
         Text(
-            "${task.endpoint} · %.1fs".format(task.elapsedSeconds(now)),
+            "${task.endpoint} · %.1fs".format(task.elapsedSeconds(now)) + eta,
             style = MaterialTheme.typography.labelMedium,
             color = color
         )
-        if (task.isActive) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        if (task.isActive) {
+            val rank = task.queueRank
+            val size = task.queueSize
+            if (rank != null && size != null && size > 1) {
+                // Queue position as a bar that fills as we move to the front.
+                LinearProgressIndicator(progress = { 1f - rank.toFloat() / size }, modifier = Modifier.fillMaxWidth())
+            } else {
+                val fraction = task.progressFraction
+                if (fraction != null) LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+        }
         task.error?.takeIf { task.status == TaskStatus.ERROR }?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.error)
         }

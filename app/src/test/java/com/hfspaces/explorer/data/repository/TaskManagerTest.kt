@@ -77,6 +77,8 @@ class TaskManagerTest {
     private fun route(handler: (RecordedRequest) -> MockResponse) {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
+                // No /config: these tests exercise the /call route.
+                if (request.path == "/config") return MockResponse().setResponseCode(404)
                 requests += "${request.method} ${request.path} ${request.body.readUtf8()}"
                 return handler(request)
             }
@@ -173,5 +175,24 @@ class TaskManagerTest {
         val restored = withTimeout(5_000) { tasks.tasks.first { it.isNotEmpty() } }.single()
         assertEquals(TaskStatus.ERROR, restored.status)
         assertTrue(restored.error!!.startsWith("Interrupted"))
+    }
+
+    @Test
+    fun `run inputs are stored so a run can be repeated after a restart`() = runBlocking {
+        route { req ->
+            if (req.method == "POST") MockResponse().setBody("""{"event_id":"e"}""")
+            else MockResponse().setBody("event: complete\ndata: [\"ok\"]\n\n")
+        }
+        val spec = spec("info_hello-world.json")
+        val first = manager()
+        val id = first.start(space, spec, spec.endpoints.single(), mapOf(0 to FormValue.Text("Grace")), null)
+        withTimeout(10_000) { first.tasks.first { list -> list.any { it.id == id && !it.isActive } } }
+        withTimeout(5_000) { while (database.taskDao().get(id)?.status != TaskStatus.COMPLETED.name) kotlinx.coroutines.delay(50) }
+
+        // A fresh manager (as after process death) loads the history with its inputs.
+        val second = manager()
+        val restored = withTimeout(5_000) { second.tasks.first { list -> list.any { it.id == id } } }.first { it.id == id }
+        assertEquals(mapOf(0 to FormValue.Text("Grace")), restored.inputs)
+        assertEquals(restored, second.find(id))
     }
 }

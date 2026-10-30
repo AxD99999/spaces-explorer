@@ -6,6 +6,7 @@ import com.hfspaces.explorer.data.model.HfSpace
 import com.hfspaces.explorer.data.remote.AppJson
 import com.hfspaces.explorer.data.remote.GradioClient
 import com.hfspaces.explorer.data.remote.HfHubClient
+import com.hfspaces.explorer.data.remote.HubSort
 import com.hfspaces.explorer.data.remote.SpaceIds
 import com.hfspaces.explorer.data.remote.SpacesPageResult
 import kotlinx.coroutines.Dispatchers
@@ -29,11 +30,32 @@ class SpacesRepository(
     private val specs = ConcurrentHashMap<String, Pair<Long, SpaceApiSpec>>()
     private val cacheFile get() = File(cacheDir, "spaces_first_page.json")
 
-    suspend fun fetchPage(page: Int, search: String?): SpacesPageResult {
-        val result = hub.fetchSpacesPage(page, search)
+    suspend fun fetchPage(
+        page: Int,
+        search: String?,
+        sort: HubSort = HubSort.TRENDING,
+        sdk: String? = null
+    ): SpacesPageResult {
+        val result = hub.fetchSpacesPage(page, search, sort, sdk)
         remember(result.spaces)
-        if (page == 0 && search.isNullOrBlank()) writeCache(result.spaces)
+        if (page == 0 && search.isNullOrBlank() && sort == HubSort.TRENDING && sdk == null) writeCache(result.spaces)
         return result
+    }
+
+    suspend fun fetchRuntime(spaceId: String, token: String?) = hub.fetchRuntime(spaceId, token)
+
+    /**
+     * Wakes a sleeping Space: any request to its host makes the Hub start it. The response
+     * itself doesn't matter, so failures are ignored; callers poll [fetchRuntime] for progress.
+     */
+    suspend fun poke(space: HfSpace, token: String?) {
+        val host = hostResolver(space) ?: return
+        runCatching { gradio.ping(host, token) }
+    }
+
+    /** Forgets a cached API description, e.g. after the Space restarted. */
+    fun invalidateSpec(spaceId: String) {
+        specs.remove(spaceId)
     }
 
     suspend fun semanticSearch(category: String?, query: String?): List<HfSpace> =

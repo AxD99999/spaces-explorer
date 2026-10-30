@@ -62,7 +62,7 @@ fun FilterSheet(
                 TextButton(onClick = { draft = SpaceFilterState(search = draft.search, category = draft.category) }) { Text("Reset") }
             }
             Text(
-                "These apply to the Spaces loaded so far. Search and categories query Hugging Face directly.",
+                "SDK and the trending, likes, updated and newest sorts query all of Hugging Face. Status, hardware, name sorts and the toggles filter the Spaces loaded so far.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

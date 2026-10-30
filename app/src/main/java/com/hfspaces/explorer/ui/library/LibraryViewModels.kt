@@ -10,8 +10,12 @@ import com.hfspaces.explorer.data.model.UserApiKey
 import com.hfspaces.explorer.data.remote.HfHubClient
 import com.hfspaces.explorer.data.repository.ApiKeysRepository
 import com.hfspaces.explorer.data.repository.FavoritesRepository
+import com.hfspaces.explorer.data.repository.MediaExporter
 import com.hfspaces.explorer.data.repository.MediaRepository
+import com.hfspaces.explorer.data.repository.SettingsRepository
 import com.hfspaces.explorer.data.repository.SpacesRepository
+import com.hfspaces.explorer.system.DeepLink
+import com.hfspaces.explorer.system.DeepLinks
 import com.hfspaces.explorer.data.repository.TaskManager
 import com.hfspaces.explorer.ui.common.userMessage
 import kotlinx.coroutines.CancellationException
@@ -35,8 +39,20 @@ private fun <T> Flow<T>.stateIn(vm: ViewModel, initial: T): StateFlow<T> =
 class ShellViewModel(
     taskManager: TaskManager,
     favorites: FavoritesRepository,
-    media: MediaRepository
+    media: MediaRepository,
+    private val settings: SettingsRepository,
+    private val deepLinks: DeepLinks
 ) : ViewModel() {
+    /** Navigation requested from outside (notifications, shortcuts, widget, share sheet). */
+    val pendingLink: StateFlow<DeepLink?> = deepLinks.pending
+
+    fun consumeLink(link: DeepLink) = deepLinks.consume(link)
+
+    val shouldAskNotificationPermission: Boolean
+        get() = !settings.settings.value.askedNotificationPermission
+
+    fun markNotificationPermissionAsked() = settings.markNotificationPermissionAsked()
+
     val runningCount = taskManager.tasks.map { list -> list.count { it.isActive } }.stateIn(this, 0)
     val favoritesCount = favorites.observe().map { it.size }.stateIn(this, 0)
     val mediaCount = media.observe().map { it.size }.stateIn(this, 0)
@@ -77,8 +93,24 @@ class FavouritesViewModel(
     }
 }
 
-class MediaViewModel(private val media: MediaRepository) : ViewModel() {
+class MediaViewModel(
+    private val media: MediaRepository,
+    private val exporter: MediaExporter
+) : ViewModel() {
     val items: StateFlow<List<GeneratedMediaItem>> = media.observe().stateIn(this, emptyList())
+
+    val needsLegacyPermission: Boolean get() = exporter.needsLegacyPermission
+
+    fun canExport(item: GeneratedMediaItem) = exporter.canExport(item)
+
+    /** Saves to the shared gallery and returns a message for the user. */
+    suspend fun saveToGallery(item: GeneratedMediaItem): String = try {
+        "Saved to ${exporter.saveToGallery(item)}"
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        "Couldn't save: ${e.userMessage()}"
+    }
 
     fun delete(id: String) {
         viewModelScope.launch { media.delete(id) }
