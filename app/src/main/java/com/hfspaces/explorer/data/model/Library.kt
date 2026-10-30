@@ -1,5 +1,6 @@
 package com.hfspaces.explorer.data.model
 
+import com.hfspaces.explorer.data.gradio.FormValue
 import kotlinx.serialization.json.JsonElement
 
 data class UserApiKey(
@@ -54,6 +55,15 @@ data class SpaceTask(
     val endTime: Long? = null,
     /** Latest progress message from the Space's queue, e.g. "Generating…". */
     val progressMessage: String? = null,
+    /** Position in the Space's queue (0 = next), while waiting. */
+    val queueRank: Int? = null,
+    val queueSize: Int? = null,
+    /** Seconds the Space expects until this run finishes or starts. */
+    val etaSeconds: Double? = null,
+    /** 0..1 when the Space reports step progress. */
+    val progressFraction: Float? = null,
+    /** Inputs the run was started with, so it can be repeated. */
+    val inputs: Map<Int, FormValue>? = null,
     /** Final (or, while generating, partial) output data array. */
     val result: JsonElement? = null,
     val error: String? = null,

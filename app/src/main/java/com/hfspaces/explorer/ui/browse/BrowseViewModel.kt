@@ -7,6 +7,8 @@ import com.hfspaces.explorer.data.model.HfSpace
 import com.hfspaces.explorer.data.model.SpaceFilterState
 import com.hfspaces.explorer.data.model.appendDistinct
 import com.hfspaces.explorer.data.model.applyLocalFilters
+import com.hfspaces.explorer.data.remote.HubSort
+import com.hfspaces.explorer.data.repository.RecentSearches
 import com.hfspaces.explorer.data.repository.SpacesRepository
 import com.hfspaces.explorer.ui.common.userMessage
 import kotlinx.coroutines.CancellationException
@@ -34,7 +36,8 @@ data class BrowseUiState(
     val loadMoreError: String? = null,
     /** True while showing the offline copy of the last trending page. */
     val showingCached: Boolean = false,
-    val hardwareOptions: List<String> = emptyList()
+    val hardwareOptions: List<String> = emptyList(),
+    val recentSearches: List<String> = emptyList()
 ) {
     val activeOnlineCount: Int get() = spaces.count { it.stage == com.hfspaces.explorer.data.model.SpaceStage.RUNNING }
 }
@@ -49,7 +52,10 @@ private data class LoadState(
     val showingCached: Boolean = false
 )
 
-class BrowseViewModel(private val repository: SpacesRepository) : ViewModel() {
+class BrowseViewModel(
+    private val repository: SpacesRepository,
+    private val recentSearches: RecentSearches
+) : ViewModel() {
     private val filter = MutableStateFlow(SpaceFilterState())
     private val loaded = MutableStateFlow<List<HfSpace>>(emptyList())
     private val load = MutableStateFlow(LoadState())
@@ -58,7 +64,7 @@ class BrowseViewModel(private val repository: SpacesRepository) : ViewModel() {
     private var searchDebounce: Job? = null
     private var nextPage = 0
 
-    val uiState: StateFlow<BrowseUiState> = combine(filter, loaded, load) { filter, loaded, load ->
+    val uiState: StateFlow<BrowseUiState> = combine(filter, loaded, load, recentSearches.items) { filter, loaded, load, recents ->
         BrowseUiState(
             filter = filter,
             spaces = loaded.applyLocalFilters(filter),
@@ -70,7 +76,8 @@ class BrowseViewModel(private val repository: SpacesRepository) : ViewModel() {
             error = load.error,
             loadMoreError = load.loadMoreError,
             showingCached = load.showingCached,
-            hardwareOptions = loaded.mapNotNull { it.hardwareLabel }.distinct().sorted()
+            hardwareOptions = loaded.mapNotNull { it.hardwareLabel }.distinct().sorted(),
+            recentSearches = recents
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowseUiState())
 
@@ -122,11 +129,11 @@ class BrowseViewModel(private val repository: SpacesRepository) : ViewModel() {
     fun loadMore() {
         val state = load.value
         if (state.isLoading || state.isLoadingMore || !state.canLoadMore || loadJob?.isActive == true) return
-        val search = filter.value.search
+        val query = filter.value
         loadJob = viewModelScope.launch {
             load.update { it.copy(isLoadingMore = true, loadMoreError = null) }
             try {
-                val page = repository.fetchPage(nextPage, search)
+                val page = repository.fetchPage(nextPage, query.search, query.hubSort(), query.hubSdk())
                 loaded.update { it.appendDistinct(page.spaces) }
                 nextPage++
                 load.update { it.copy(isLoadingMore = false, canLoadMore = page.hasMore && page.spaces.isNotEmpty()) }
@@ -148,11 +155,13 @@ class BrowseViewModel(private val repository: SpacesRepository) : ViewModel() {
             }
             try {
                 if (query.category != ALL) {
+                    if (query.search.isNotBlank()) recentSearches.add(query.search)
                     val results = repository.semanticSearch(query.category, query.search)
                     loaded.value = results
                     load.value = LoadState(isLoading = false, canLoadMore = false)
                 } else {
-                    val page = repository.fetchPage(0, query.search)
+                    if (query.search.isNotBlank()) recentSearches.add(query.search)
+                    val page = repository.fetchPage(0, query.search, query.hubSort(), query.hubSdk())
                     loaded.value = page.spaces
                     nextPage = 1
                     load.value = LoadState(isLoading = false, canLoadMore = page.hasMore)
@@ -164,6 +173,20 @@ class BrowseViewModel(private val repository: SpacesRepository) : ViewModel() {
             }
         }
     }
+
+    fun removeRecentSearch(query: String) = recentSearches.remove(query)
+
+    /** Runs a search immediately (e.g. from a recent-search chip), skipping the debounce. */
+    fun searchNow(text: String) {
+        searchDebounce?.cancel()
+        filter.update { it.copy(search = text) }
+        reload()
+    }
+
+    private fun SpaceFilterState.hubSort(): HubSort =
+        HubSort.entries.firstOrNull { it.param != null && it.param == sortBy.serverKey } ?: HubSort.TRENDING
+
+    private fun SpaceFilterState.hubSdk(): String? = sdk.takeIf { it != ALL }
 
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 400L

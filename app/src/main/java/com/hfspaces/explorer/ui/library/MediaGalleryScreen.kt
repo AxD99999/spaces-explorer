@@ -5,6 +5,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -79,7 +80,7 @@ private enum class MediaFilter(val label: String, val types: Set<GeneratedMediaT
 }
 
 @Composable
-fun MediaGalleryScreen(viewModel: MediaViewModel, onBack: () -> Unit, onOpenSpace: (String) -> Unit) {
+fun MediaGalleryScreen(viewModel: MediaViewModel, onBack: () -> Unit, onOpenSpace: (String) -> Unit, onOpenViewer: (String) -> Unit) {
     val items by viewModel.items.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf(MediaFilter.ALL) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -124,7 +125,9 @@ fun MediaGalleryScreen(viewModel: MediaViewModel, onBack: () -> Unit, onOpenSpac
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(visible, key = { it.id }) { item -> MediaTile(item) { selectedId = item.id } }
+                    items(visible, key = { it.id }) { item ->
+                        MediaTile(item) { if (item.type == GeneratedMediaType.IMAGE && item.displaySource != null) onOpenViewer(item.id) else selectedId = item.id }
+                    }
                 }
             }
         }
@@ -133,6 +136,7 @@ fun MediaGalleryScreen(viewModel: MediaViewModel, onBack: () -> Unit, onOpenSpac
     items.firstOrNull { it.id == selectedId }?.let { item ->
         MediaDetailSheet(
             item = item,
+            viewModel = viewModel,
             onDismiss = { selectedId = null },
             onDelete = {
                 viewModel.delete(item.id)
@@ -198,7 +202,7 @@ private fun MediaTile(item: GeneratedMediaItem, onClick: () -> Unit) {
 }
 
 @Composable
-private fun MediaDetailSheet(item: GeneratedMediaItem, onDismiss: () -> Unit, onDelete: () -> Unit, onOpenSpace: () -> Unit) {
+private fun MediaDetailSheet(item: GeneratedMediaItem, viewModel: MediaViewModel, onDismiss: () -> Unit, onDelete: () -> Unit, onOpenSpace: () -> Unit) {
     val context = LocalContext.current
     val snackbar = LocalSnackbarHostState.current
     val scope = rememberCoroutineScope()
@@ -231,7 +235,7 @@ private fun MediaDetailSheet(item: GeneratedMediaItem, onDismiss: () -> Unit, on
                 Text("Prompt", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { context.shareContent(localUri, item.textContent ?: item.url, item.mimeType) }) { Text("Share") }
                 if (localUri != null || item.url != null) {
                     OutlinedButton(onClick = {
@@ -239,6 +243,9 @@ private fun MediaDetailSheet(item: GeneratedMediaItem, onDismiss: () -> Unit, on
                     }) { Text("Open") }
                 }
                 OutlinedButton(onClick = onOpenSpace) { Text("Run again") }
+                if (viewModel.canExport(item) && !viewModel.needsLegacyPermission) {
+                    OutlinedButton(onClick = { scope.launch { snackbar.showSnackbar(viewModel.saveToGallery(item)) } }) { Text("Save") }
+                }
             }
             TextButton(onClick = onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
         }

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -49,7 +50,7 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun TasksScreen(viewModel: TasksViewModel, onBack: () -> Unit, onOpenRunner: (String) -> Unit) {
+fun TasksScreen(viewModel: TasksViewModel, onBack: () -> Unit, onOpenRunner: (String) -> Unit, onRerun: (spaceId: String, taskId: String) -> Unit) {
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val hasFinished by viewModel.hasFinished.collectAsStateWithLifecycle()
     val anyRunning = tasks.any { it.isActive }
@@ -85,7 +86,8 @@ fun TasksScreen(viewModel: TasksViewModel, onBack: () -> Unit, onOpenRunner: (St
                         now = now,
                         onOpen = { onOpenRunner(task.space.id) },
                         onCancel = { viewModel.cancel(task.id) },
-                        onRemove = { viewModel.remove(task.id) }
+                        onRemove = { viewModel.remove(task.id) },
+                        onRerun = { onRerun(task.space.id, task.id) }
                     )
                 }
             }
@@ -94,7 +96,7 @@ fun TasksScreen(viewModel: TasksViewModel, onBack: () -> Unit, onOpenRunner: (St
 }
 
 @Composable
-private fun TaskCard(task: SpaceTask, now: Long, onOpen: () -> Unit, onCancel: () -> Unit, onRemove: () -> Unit) {
+private fun TaskCard(task: SpaceTask, now: Long, onOpen: () -> Unit, onCancel: () -> Unit, onRemove: () -> Unit, onRerun: () -> Unit) {
     val colors = LocalStatusColors.current
     val (label, color) = when (task.status) {
         TaskStatus.RUNNING -> "Running" to MaterialTheme.colorScheme.primary
@@ -137,6 +139,12 @@ private fun TaskCard(task: SpaceTask, now: Long, onOpen: () -> Unit, onCancel: (
                         Text("${task.savedMediaIds.size} saved", style = MaterialTheme.typography.labelSmall, color = colors.running, modifier = Modifier.weight(1f))
                     }
                     IconButton(onClick = onRemove) { Icon(Icons.Outlined.Delete, contentDescription = "Remove from history") }
+                    if (task.inputs != null) {
+                        OutlinedButton(onClick = onRerun) {
+                            Icon(Icons.Outlined.Replay, contentDescription = null)
+                            Text("Run again", modifier = Modifier.padding(start = 6.dp))
+                        }
+                    }
                 }
             }
         }

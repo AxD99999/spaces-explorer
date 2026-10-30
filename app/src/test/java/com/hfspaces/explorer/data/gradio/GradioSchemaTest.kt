@@ -160,4 +160,14 @@ class GradioSchemaTest {
         )
         assertEquals(listOf("/a", "/c"), info.toEndpoints().map { it.name })
     }
+
+    @Test
+    fun `gradio 6 translation objects in labels do not break parsing`() {
+        // Captured from gradio/chatinterface_streaming_echo (Gradio 6): /flag's label is an object.
+        val endpoints = Fixtures.endpoints("info_chatinterface.json")
+        assertTrue(endpoints.any { it.name == "/slow_echo" })
+        val flag = endpoints.first { it.name == "/flag" }
+        assertEquals("chatbot", flag.parameters.first().label)
+        assertEquals("/slow_echo", endpoints.first { it.chatShape() != null }.name)
+    }
 }

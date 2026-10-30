@@ -137,7 +137,9 @@ fun SpaceCard(
     onOpen: () -> Unit,
     onRun: () -> Unit,
     onToggleFavorite: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showFavorite: Boolean = true,
+    menu: (@Composable () -> Unit)? = null
 ) {
     Card(
         onClick = onOpen,
@@ -166,7 +168,8 @@ fun SpaceCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                FavoriteButton(isFavorite, onToggleFavorite)
+                if (showFavorite) FavoriteButton(isFavorite, onToggleFavorite)
+                menu?.invoke()
             }
             space.description?.let {
                 Text(

@@ -5,18 +5,21 @@ import com.hfspaces.explorer.HfSpacesApplication
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.HttpUrl
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import com.hfspaces.explorer.data.remote.AppJson
+import java.net.InetAddress
+import kotlin.concurrent.thread
 
 /** Application wired to [FakeHub] instead of Hugging Face. */
 class TestApp : HfSpacesApplication() {
     override fun createContainer() = AppContainer(
         context = this,
-        hubBaseUrl = FakeHub.server.url("/"),
-        hostResolver = { FakeHub.server.url("/") },
+        hubBaseUrl = FakeHub.baseUrl,
+        hostResolver = { FakeHub.baseUrl },
         tokenCipher = FakeTokenCipher(),
         databaseName = null
     )
@@ -24,13 +27,20 @@ class TestApp : HfSpacesApplication() {
 
 /** A tiny stand-in for the Hub and for the `gradio/hello_world` Space. */
 object FakeHub {
-    val server: MockWebServer by lazy {
-        MockWebServer().apply {
-            dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest): MockResponse = route(request)
-            }
-            start()
+    val server = MockWebServer().apply {
+        dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = route(request)
         }
+    }
+
+    /** Started off the main thread: on a device, binding and resolving the host are network calls. */
+    val baseUrl: HttpUrl by lazy {
+        var url: HttpUrl? = null
+        thread {
+            server.start(InetAddress.getByName("127.0.0.1"), 0)
+            url = server.url("/")
+        }.join()
+        checkNotNull(url)
     }
 
     @Volatile private var lastName = ""

@@ -1,6 +1,10 @@
 package com.hfspaces.explorer.ui
 
+import android.content.Intent
 import android.graphics.Bitmap
+import android.os.Looper
+import org.robolectric.Shadows.shadowOf
+import java.time.Duration
 import android.graphics.Canvas
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasContentDescription
@@ -12,6 +16,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import com.hfspaces.explorer.HfSpacesApplication
 import com.hfspaces.explorer.MainActivity
 import com.hfspaces.explorer.testing.TestApp
 import org.junit.Rule
@@ -77,6 +83,72 @@ class AppFlowTest {
         compose.onNodeWithContentDescription("Filters").performClick()
         compose.waitUntilAtLeastOneExists(hasText("Filter & sort"), timeout)
         screenshot("08-filters-dark")
+    }
+
+    @Test
+    fun `run again restores the inputs of a past run`() {
+        compose.waitUntilAtLeastOneExists(hasText("Hello World"), timeout)
+        compose.onAllNodesWithText("Run")[0].performClick()
+        compose.waitUntilAtLeastOneExists(hasSetTextAction() and hasText("name"), timeout)
+        compose.onNode(hasSetTextAction() and hasText("name")).performTextInput("Grace")
+        compose.onNodeWithText("Run").performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Hello Grace!!"), timeout)
+
+        // Change the input, then go back to history and repeat the earlier run.
+        compose.onNode(hasSetTextAction() and hasText("Grace")).performTextReplacement("Someone else")
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Open menu"), timeout)
+        compose.onNodeWithContentDescription("Open menu").performClick()
+        compose.onNodeWithText("Runs").performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Run again"), timeout)
+        screenshot("09-runs-run-again")
+        compose.onNodeWithText("Run again").performClick()
+        compose.waitUntilAtLeastOneExists(hasSetTextAction() and hasText("Grace"), timeout)
+    }
+
+    @Test
+    fun `shared text goes into the chosen space`() {
+        compose.waitUntilAtLeastOneExists(hasText("Hello World"), timeout)
+        compose.runOnUiThread {
+            (compose.activity.application as HfSpacesApplication).container.deepLinks.handle(
+                Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "Shared name")
+            )
+        }
+        compose.waitUntilAtLeastOneExists(hasText("Send to a Space"), timeout)
+        compose.onNode(hasSetTextAction() and hasText("Search Gradio Spaces")).performTextInput("hello")
+        // Robolectric's clock only moves when told to; let the search debounce elapse.
+        compose.runOnUiThread { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500)) }
+        compose.waitUntilAtLeastOneExists(hasText("gradio/hello_world"), timeout)
+        screenshot("10-share-target")
+        compose.onNodeWithText("gradio/hello_world").performClick()
+        compose.waitUntilAtLeastOneExists(hasSetTextAction() and hasText("Shared name"), timeout)
+    }
+
+    @Test
+    fun `new screens render`() {
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Open menu"), timeout)
+        fun open(item: String) {
+            compose.onNodeWithContentDescription("Open menu").performClick()
+            compose.onNodeWithText(item).performClick()
+        }
+        open("Settings")
+        compose.waitUntilAtLeastOneExists(hasText("Dynamic colour"), timeout)
+        screenshot("11-settings")
+        compose.onNodeWithContentDescription("Back").performClick()
+
+        open("Compare")
+        compose.waitUntilAtLeastOneExists(hasText("Compare Spaces"), timeout)
+        screenshot("12-compare-empty")
+        compose.onNodeWithContentDescription("Back").performClick()
+
+        open("My Spaces")
+        compose.waitUntilAtLeastOneExists(hasText("Add a token first"), timeout)
+        screenshot("13-my-spaces-no-token")
+        compose.onNodeWithContentDescription("Back").performClick()
+
+        open("Favourites")
+        compose.waitUntilAtLeastOneExists(hasText("No favourites yet"), timeout)
+        screenshot("14-favourites-empty")
     }
 
     /** Saved under build/ for manual review; not compared against goldens. */

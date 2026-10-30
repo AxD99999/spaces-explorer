@@ -32,9 +32,19 @@ class GradioClientTest {
         runCatching { server.shutdown() }
     }
 
-    private fun route(handler: (RecordedRequest) -> MockResponse) {
+    /** Requests other than the /config probe, in order. */
+    private val calls = java.util.concurrent.CopyOnWriteArrayList<RecordedRequest>()
+
+    /** Routes everything to [handler]; /config answers 404 (no queue) unless [config] is given. */
+    private fun route(config: String? = null, handler: (RecordedRequest) -> MockResponse) {
         server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest) = handler(request)
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                if (request.path == "/config") {
+                    return if (config == null) MockResponse().setResponseCode(404) else MockResponse().setBody(config)
+                }
+                calls += request
+                return handler(request)
+            }
         }
     }
 
@@ -52,9 +62,8 @@ class GradioClientTest {
         val updates = mutableListOf<CallUpdate>()
         val result = client.predict(host, "/gradio_api", "/predict", JsonArray(listOf(JsonPrimitive(3))), null) { updates += it }
         assertEquals(JsonArray(listOf(JsonPrimitive(7))), result)
-        assertEquals(listOf<CallUpdate>(CallUpdate.Queued), updates)
-        val submit = server.takeRequest()
-        assertEquals("""{"data":[3]}""", submit.body.readUtf8())
+        assertEquals(listOf<CallUpdate>(CallUpdate.Queued()), updates)
+        assertEquals("""{"data":[3]}""", calls.first().body.readUtf8())
     }
 
     @Test
@@ -72,7 +81,7 @@ class GradioClientTest {
         } catch (e: SpaceExecutionException) {
             assertEquals("Cannot divide by zero!", e.message)
         }
-        assertEquals(2, server.requestCount)
+        assertEquals(2, calls.size)
     }
 
     @Test
@@ -126,7 +135,7 @@ class GradioClientTest {
         val error = runCatching { client.predict(host, "/gradio_api", "predict", JsonArray(emptyList()), null) }.exceptionOrNull()
         assertTrue(error is HttpStatusException)
         assertTrue(error!!.message!!.contains("503"))
-        assertEquals(1, server.requestCount)
+        assertEquals(1, calls.size)
     }
 
     @Test
@@ -178,7 +187,7 @@ class GradioClientTest {
             token = null
         )
         assertEquals(listOf("/tmp/gradio/1/a.png", "/tmp/gradio/2/b.png"), paths)
-        val request = server.takeRequest()
+        val request = calls.single()
         assertEquals("/gradio_api/upload", request.path)
         assertTrue(request.getHeader("Content-Type")!!.startsWith("multipart/form-data"))
         val body = request.body.readUtf8()
@@ -191,8 +200,8 @@ class GradioClientTest {
             if (req.method == "POST") MockResponse().setBody("""{"event_id":"t"}""") else sse("event: complete\ndata: []\n\n")
         }
         client.predict(host, "/gradio_api", "predict", JsonArray(emptyList()), token = "hf_secret_token_value")
-        assertNull(server.takeRequest().getHeader("Authorization"))
-        assertNull(server.takeRequest().getHeader("Authorization"))
+        assertTrue(calls.size >= 2)
+        calls.forEach { assertNull(it.getHeader("Authorization")) }
     }
 
     @Test
@@ -200,5 +209,93 @@ class GradioClientTest {
         val error = runCatching { client.predict(host, "", "../../admin", JsonArray(emptyList()), null) }.exceptionOrNull()
         assertTrue(error is IllegalArgumentException)
         assertEquals(0, server.requestCount)
+    }
+
+    private val queueConfig =
+        """{"protocol":"sse_v3","api_prefix":"/gradio_api","dependencies":[{"id":0,"api_name":false},{"id":1,"api_name":"predict","queue":true}]}"""
+
+    private fun queueData(vararg messages: String) =
+        sse(messages.joinToString("") { "data: $it\n\n" })
+
+    @Test
+    fun `queue protocol reports position progress and streamed diffs`() = runBlocking {
+        route(config = queueConfig) { req ->
+            when {
+                req.path == "/gradio_api/queue/join" -> MockResponse().setBody("""{"event_id":"e1"}""")
+                req.path!!.startsWith("/gradio_api/queue/data") -> queueData(
+                    """{"msg":"estimation","event_id":"e1","rank":2,"queue_size":3,"rank_eta":4.5}""",
+                    """{"msg":"estimation","event_id":"other","rank":0,"queue_size":3,"rank_eta":1}""",
+                    """{"msg":"process_starts","event_id":"e1","eta":2.0}""",
+                    """{"msg":"progress","event_id":"e1","progress_data":[{"index":5,"length":10,"progress":null,"desc":null}]}""",
+                    """{"msg":"process_generating","event_id":"e1","output":{"data":["He"]}}""",
+                    """{"msg":"process_generating","event_id":"e1","output":{"data":[[["append",[],"llo"]]]}}""",
+                    """{"msg":"process_completed","event_id":"e1","output":{"data":["Hello"]},"success":true}""",
+                    """{"msg":"close_stream","event_id":null}"""
+                )
+                else -> MockResponse().setResponseCode(500)
+            }
+        }
+        val updates = mutableListOf<CallUpdate>()
+        val result = client.predict(host, "/gradio_api", "/predict", JsonArray(listOf(JsonPrimitive("x"))), null) { updates += it }
+        assertEquals("[\"Hello\"]", result.toString())
+        assertEquals(
+            listOf(
+                CallUpdate.Queued(),
+                CallUpdate.Queued(2, 3, 4.5),
+                CallUpdate.Started(2.0),
+                CallUpdate.Progress(0.5f, null),
+                CallUpdate.Generating(JsonArray(listOf(JsonPrimitive("He")))),
+                CallUpdate.Generating(JsonArray(listOf(JsonPrimitive("Hello"))))
+            ),
+            updates
+        )
+        val join = calls.first { it.path == "/gradio_api/queue/join" }.body.readUtf8()
+        assertTrue(join, join.contains("\"fn_index\":1") && join.contains("\"data\":[\"x\"]") && join.contains("session_hash"))
+        val session = Regex("\"session_hash\":\"([a-z0-9]+)\"").find(join)!!.groupValues[1]
+        assertTrue(calls.any { it.path == "/gradio_api/queue/data?session_hash=$session" })
+    }
+
+    @Test
+    fun `queue failures surface the space error`() = runBlocking {
+        route(config = queueConfig) { req ->
+            if (req.method == "POST") MockResponse().setBody("""{"event_id":"e1"}""")
+            else queueData("""{"msg":"process_completed","event_id":"e1","output":{"error":"CUDA out of memory"},"success":false}""")
+        }
+        val error = runCatching { client.predict(host, "/gradio_api", "predict", JsonArray(emptyList()), null) }.exceptionOrNull()
+        assertTrue(error is SpaceExecutionException)
+        assertEquals("CUDA out of memory", error!!.message)
+    }
+
+    @Test
+    fun `cancelling a queued run tells the space to drop it`() = runBlocking {
+        route(config = queueConfig) { req ->
+            when {
+                req.path == "/gradio_api/queue/join" -> MockResponse().setBody("""{"event_id":"slow"}""")
+                req.path == "/gradio_api/cancel" -> MockResponse().setBody("{}")
+                else -> queueData("""{"msg":"estimation","event_id":"slow","rank":5,"queue_size":9,"rank_eta":60}""")
+                    .setSocketPolicy(SocketPolicy.KEEP_OPEN).throttleBody(1, 1, TimeUnit.HOURS)
+            }
+        }
+        val job = async(kotlinx.coroutines.Dispatchers.Default) {
+            client.predict(host, "/gradio_api", "predict", JsonArray(emptyList()), null)
+        }
+        delay(500)
+        job.cancel()
+        withTimeout(5_000) { runCatching { job.await() } }
+        withTimeout(5_000) { while (calls.none { it.path == "/gradio_api/cancel" }) delay(50) }
+        assertTrue(calls.first { it.path == "/gradio_api/cancel" }.body.readUtf8().contains("\"event_id\":\"slow\""))
+    }
+
+    @Test
+    fun `a space that rejects queue joins falls back to the call route`() = runBlocking {
+        route(config = queueConfig) { req ->
+            when (req.path) {
+                "/gradio_api/queue/join" -> MockResponse().setResponseCode(404)
+                "/gradio_api/call/predict" -> MockResponse().setBody("""{"event_id":"c1"}""")
+                "/gradio_api/call/predict/c1" -> sse("event: complete\ndata: [42]\n\n")
+                else -> MockResponse().setResponseCode(500)
+            }
+        }
+        assertEquals("[42]", client.predict(host, "/gradio_api", "predict", JsonArray(emptyList()), null).toString())
     }
 }

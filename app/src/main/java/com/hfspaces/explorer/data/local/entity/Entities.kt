@@ -2,6 +2,7 @@ package com.hfspaces.explorer.data.local.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.hfspaces.explorer.data.model.HfSpace
 import com.hfspaces.explorer.data.model.HfSpaceHardware
@@ -113,5 +114,36 @@ data class TaskEntity(
     val error: String?,
     val resultJson: String?,
     @ColumnInfo(defaultValue = "")
-    val savedMediaIds: String = ""
+    val savedMediaIds: String = "",
+    /** Form values the run started with (v3), see encodeFormValues. */
+    val inputsJson: String? = null
+)
+
+/** A named set of inputs for one endpoint of a Space. */
+@Entity(tableName = "presets", indices = [Index("spaceId")])
+data class PresetEntity(
+    @PrimaryKey val id: String,
+    val spaceId: String,
+    val endpoint: String,
+    val name: String,
+    val valuesJson: String,
+    val createdAt: Long
+)
+
+/** A user-made group of favourites. */
+@Entity(tableName = "collections")
+data class CollectionEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val createdAt: Long
+)
+
+@Entity(
+    tableName = "collection_spaces",
+    primaryKeys = ["collectionId", "spaceId"],
+    indices = [Index("spaceId")]
+)
+data class CollectionSpaceEntity(
+    val collectionId: String,
+    val spaceId: String
 )

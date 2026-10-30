@@ -14,10 +14,10 @@ android {
         applicationId = "com.hfspaces.explorer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 3
+        versionName = "2.1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.hfspaces.explorer.testing.HfTestRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -82,6 +82,10 @@ android {
     sourceSets {
         // Exported Room schemas double as fixtures for migration tests.
         getByName("test").assets.srcDir("$projectDir/schemas")
+        // Fakes (TestApp, FakeHub) and recorded API responses shared by JVM and device tests.
+        getByName("test").java.srcDir("src/sharedTest/java")
+        getByName("androidTest").java.srcDir("src/sharedTest/java")
+        getByName("androidTest").resources.srcDir("src/test/resources")
     }
 }
 
@@ -132,4 +136,11 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.ui.test.junit4)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation(libs.okhttp.mockwebserver)
 }

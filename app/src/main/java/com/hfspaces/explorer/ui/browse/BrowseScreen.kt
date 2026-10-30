@@ -1,5 +1,6 @@
 package com.hfspaces.explorer.ui.browse
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SearchOff
@@ -32,6 +34,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -150,7 +154,10 @@ fun BrowseScreen(
             SearchRow(
                 search = state.filter.search,
                 filterCount = state.filter.sheetFilterCount,
+                recent = state.recentSearches,
                 onSearchChange = viewModel::onSearchChange,
+                onPickRecent = viewModel::searchNow,
+                onRemoveRecent = viewModel::removeRecentSearch,
                 onOpenFilters = { showFilters = true }
             )
             CategoryChips(selected = state.filter.category, onSelect = viewModel::onCategorySelected)
@@ -218,8 +225,18 @@ fun BrowseScreen(
 }
 
 @Composable
-private fun SearchRow(search: String, filterCount: Int, onSearchChange: (String) -> Unit, onOpenFilters: () -> Unit) {
+private fun SearchRow(
+    search: String,
+    filterCount: Int,
+    recent: List<String>,
+    onSearchChange: (String) -> Unit,
+    onPickRecent: (String) -> Unit,
+    onRemoveRecent: (String) -> Unit,
+    onOpenFilters: () -> Unit
+) {
     val focusManager = LocalFocusManager.current
+    var focused by remember { mutableStateOf(false) }
+    Column {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -228,7 +245,7 @@ private fun SearchRow(search: String, filterCount: Int, onSearchChange: (String)
         OutlinedTextField(
             value = search,
             onValueChange = onSearchChange,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).onFocusChanged { focused = it.isFocused },
             placeholder = { Text("Search Spaces") },
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
             trailingIcon = {
@@ -250,6 +267,34 @@ private fun SearchRow(search: String, filterCount: Int, onSearchChange: (String)
                 )
             }
         }
+    }
+    // Recent searches, offered while the empty search box has focus.
+    if (focused && search.isEmpty() && recent.isNotEmpty()) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.History, contentDescription = "Recent searches", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            recent.forEach { query ->
+                InputChip(
+                    selected = false,
+                    onClick = {
+                        onPickRecent(query)
+                        focusManager.clearFocus()
+                    },
+                    label = { Text(query) },
+                    trailingIcon = {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Forget $query",
+                            modifier = Modifier.size(16.dp).clickable { onRemoveRecent(query) }
+                        )
+                    }
+                )
+            }
+        }
+    }
     }
 }
 

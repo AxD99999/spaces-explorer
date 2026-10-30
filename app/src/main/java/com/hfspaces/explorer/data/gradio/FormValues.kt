@@ -1,5 +1,10 @@
 package com.hfspaces.explorer.data.gradio
 
+import com.hfspaces.explorer.data.remote.AppJson
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -10,6 +15,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
 /** A file the user picked, referenced by content URI until it is uploaded. */
+@Serializable
 data class PickedFile(
     val uri: String,
     val name: String,
@@ -18,12 +24,32 @@ data class PickedFile(
 )
 
 /** The editable value behind one form control. */
+@Serializable
 sealed interface FormValue {
+    @Serializable @SerialName("text")
     data class Text(val text: String) : FormValue
+
+    @Serializable @SerialName("bool")
     data class Bool(val checked: Boolean) : FormValue
+
+    @Serializable @SerialName("multi")
     data class Multi(val selected: List<String>) : FormValue
+
+    @Serializable @SerialName("files")
     data class Files(val files: List<PickedFile>) : FormValue
 }
+
+private val FormValuesSerializer = MapSerializer(Int.serializer(), FormValue.serializer())
+
+/** Stores a form (by parameter index) as JSON, for run history and presets. */
+fun encodeFormValues(values: Map<Int, FormValue>): String = AppJson.encodeToString(FormValuesSerializer, values)
+
+fun decodeFormValues(json: String?): Map<Int, FormValue>? =
+    json?.let { runCatching { AppJson.decodeFromString(FormValuesSerializer, it) }.getOrNull() }
+
+/** Drops staged files that no longer exist (the upload cache is pruned after a day). */
+fun Map<Int, FormValue>.withoutMissingFiles(exists: (String) -> Boolean): Map<Int, FormValue> =
+    mapValues { (_, value) -> if (value is FormValue.Files) FormValue.Files(value.files.filter { exists(it.uri) }) else value }
 
 /** A file already uploaded to the Space, as Gradio's `FileData`. */
 data class UploadedFile(val serverPath: String, val source: PickedFile)
@@ -91,7 +117,7 @@ private fun toJson(label: String, kind: InputKind, value: FormValue, uploads: Ma
         is InputKind.Json -> {
             val text = (value as? FormValue.Text)?.text?.trim().orEmpty()
             if (text.isEmpty()) JsonNull
-            else runCatching { com.hfspaces.explorer.data.remote.AppJson.parseToJsonElement(text) }
+            else runCatching { AppJson.parseToJsonElement(text) }
                 .getOrElse { JsonPrimitive(text) }
         }
     }

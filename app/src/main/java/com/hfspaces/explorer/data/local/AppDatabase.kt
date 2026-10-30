@@ -9,6 +9,11 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.hfspaces.explorer.data.local.dao.ApiKeysDao
+import com.hfspaces.explorer.data.local.entity.PresetEntity
+import com.hfspaces.explorer.data.local.entity.CollectionSpaceEntity
+import com.hfspaces.explorer.data.local.entity.CollectionEntity
+import com.hfspaces.explorer.data.local.dao.PresetDao
+import com.hfspaces.explorer.data.local.dao.CollectionDao
 import com.hfspaces.explorer.data.local.dao.FavoritesDao
 import com.hfspaces.explorer.data.local.dao.GeneratedMediaDao
 import com.hfspaces.explorer.data.local.dao.TaskDao
@@ -23,9 +28,12 @@ import com.hfspaces.explorer.data.security.TokenCipher
         FavoriteSpaceEntity::class,
         ApiKeyEntity::class,
         GeneratedMediaEntity::class,
-        TaskEntity::class
+        TaskEntity::class,
+        PresetEntity::class,
+        CollectionEntity::class,
+        CollectionSpaceEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +41,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun apiKeysDao(): ApiKeysDao
     abstract fun generatedMediaDao(): GeneratedMediaDao
     abstract fun taskDao(): TaskDao
+    abstract fun presetDao(): PresetDao
+    abstract fun collectionDao(): CollectionDao
 
     companion object {
         const val NAME = "hf_spaces_database"
@@ -44,7 +54,7 @@ abstract class AppDatabase : RoomDatabase() {
                 Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, name)
             }
             // No destructive fallback: a missing migration must fail loudly rather than wipe user data.
-            return builder.addMigrations(migration1To2(cipher)).build()
+            return builder.addMigrations(migration1To2(cipher), MIGRATION_2_3).build()
         }
     }
 }
@@ -73,5 +83,25 @@ fun migration1To2(cipher: TokenCipher) = object : Migration(1, 2) {
             val values = ContentValues().apply { put("token", cipher.encrypt(token)) }
             db.update("api_keys", SQLiteDatabase.CONFLICT_NONE, values, "id = ?", arrayOf(id))
         }
+    }
+}
+
+/** v3: run inputs for "run again", input presets, favourite collections. */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `task_history` ADD COLUMN `inputsJson` TEXT")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `presets` (`id` TEXT NOT NULL, `spaceId` TEXT NOT NULL, `endpoint` TEXT NOT NULL, " +
+                "`name` TEXT NOT NULL, `valuesJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_presets_spaceId` ON `presets` (`spaceId`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `collections` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `collection_spaces` (`collectionId` TEXT NOT NULL, `spaceId` TEXT NOT NULL, " +
+                "PRIMARY KEY(`collectionId`, `spaceId`))"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_collection_spaces_spaceId` ON `collection_spaces` (`spaceId`)")
     }
 }

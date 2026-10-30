@@ -1,6 +1,10 @@
 package com.hfspaces.explorer.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -105,11 +109,20 @@ val LocalStatusColors = staticCompositionLocalOf { LightStatus }
 @Composable
 fun HfSpacesTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
+    val colors = when {
+        // Material You: colours from the user's wallpaper (Android 12+).
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        darkTheme -> DarkColors
+        else -> LightColors
+    }
     CompositionLocalProvider(LocalStatusColors provides if (darkTheme) DarkStatus else LightStatus) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = colors,
             typography = Typography,
             content = content
         )
