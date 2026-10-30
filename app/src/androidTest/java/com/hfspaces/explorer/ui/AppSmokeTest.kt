@@ -10,7 +10,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import android.Manifest
+import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.rule.GrantPermissionRule
 import com.hfspaces.explorer.MainActivity
 import org.junit.Rule
 import org.junit.Test
@@ -20,7 +23,12 @@ import org.junit.runner.RunWith
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
 class AppSmokeTest {
-    @get:Rule
+    // Otherwise the first run opens the system permission dialog over the app.
+    @get:Rule(order = 0)
+    val notifications: GrantPermissionRule =
+        if (Build.VERSION.SDK_INT >= 33) GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS) else GrantPermissionRule.grant()
+
+    @get:Rule(order = 1)
     val compose = createAndroidComposeRule<MainActivity>()
 
     private val timeout = 20_000L

@@ -1,6 +1,7 @@
 package com.hfspaces.explorer.ui
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -44,9 +45,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.lifecycle.DEFAULT_ARGS_KEY
 import androidx.lifecycle.HasDefaultViewModelProviderFactory
@@ -132,11 +135,14 @@ fun HfSpacesApp() {
     }
 
     // Ask for notification permission the first time something runs (Android 13+).
+    val context = LocalContext.current
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         shell.markNotificationPermissionAsked()
     }
     LaunchedEffect(runningCount > 0) {
-        if (runningCount > 0 && Build.VERSION.SDK_INT >= 33 && shell.shouldAskNotificationPermission) {
+        if (runningCount > 0 && Build.VERSION.SDK_INT >= 33 && shell.shouldAskNotificationPermission &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
