@@ -8,6 +8,11 @@ build/
 *.apk
 *.aab
 
+# Release signing (never commit keys or their passwords)
+keystore.properties
+*.jks
+*.keystore
+
 # IDE
 .idea/
 *.iml

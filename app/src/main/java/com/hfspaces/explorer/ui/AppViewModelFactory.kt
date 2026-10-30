@@ -28,7 +28,7 @@ private fun CreationExtras.container(): AppContainer =
 
 val AppViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
     initializer { container().run { ShellViewModel(taskManager, favoritesRepository, mediaRepository, settingsRepository, deepLinks) } }
-    initializer { container().run { BrowseViewModel(spacesRepository, recentSearches) } }
+    initializer { container().run { BrowseViewModel(spacesRepository, recentSearches, settingsRepository) } }
     initializer {
         val c = container()
         SpaceViewModel(
@@ -54,7 +54,7 @@ val AppViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
     initializer { container().run { MediaViewModel(mediaRepository, mediaExporter) } }
     initializer { TasksViewModel(container().taskManager) }
     initializer { container().run { ApiKeysViewModel(apiKeysRepository, hubClient) } }
-    initializer { container().run { SpacePickerViewModel(spacesRepository, favoritesRepository, taskManager, deepLinks) } }
+    initializer { container().run { SpacePickerViewModel(spacesRepository, favoritesRepository, taskManager, deepLinks, settingsRepository) } }
     initializer {
         val c = container()
         CompareViewModel(createSavedStateHandle(), c.spacesRepository, c.favoritesRepository, c.apiKeysRepository, c.taskManager)

@@ -87,7 +87,8 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = false,
     val notifyOnFinish: Boolean = true,
-    val askedNotificationPermission: Boolean = false
+    val askedNotificationPermission: Boolean = false,
+    val showAdultSpaces: Boolean = false
 )
 
 /** Small user preferences kept in SharedPreferences. */
@@ -99,6 +100,7 @@ class SettingsRepository(private val prefs: SharedPreferences) {
     fun setDynamicColor(enabled: Boolean) = edit { putBoolean(KEY_DYNAMIC, enabled) }
     fun setNotifyOnFinish(enabled: Boolean) = edit { putBoolean(KEY_NOTIFY, enabled) }
     fun markNotificationPermissionAsked() = edit { putBoolean(KEY_ASKED_NOTIFY, true) }
+    fun setShowAdultSpaces(enabled: Boolean) = edit { putBoolean(KEY_ADULT, enabled) }
 
     private fun edit(block: SharedPreferences.Editor.() -> Unit) {
         prefs.edit().apply(block).apply()
@@ -109,7 +111,8 @@ class SettingsRepository(private val prefs: SharedPreferences) {
         themeMode = runCatching { ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "") }.getOrDefault(ThemeMode.SYSTEM),
         dynamicColor = prefs.getBoolean(KEY_DYNAMIC, false),
         notifyOnFinish = prefs.getBoolean(KEY_NOTIFY, true),
-        askedNotificationPermission = prefs.getBoolean(KEY_ASKED_NOTIFY, false)
+        askedNotificationPermission = prefs.getBoolean(KEY_ASKED_NOTIFY, false),
+        showAdultSpaces = prefs.getBoolean(KEY_ADULT, false)
     )
 
     private companion object {
@@ -117,6 +120,7 @@ class SettingsRepository(private val prefs: SharedPreferences) {
         const val KEY_DYNAMIC = "dynamic_color"
         const val KEY_NOTIFY = "notify_on_finish"
         const val KEY_ASKED_NOTIFY = "asked_notification_permission"
+        const val KEY_ADULT = "show_adult_spaces"
     }
 }
 

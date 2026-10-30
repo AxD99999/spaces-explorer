@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,16 +8,26 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Release signing comes from keystore.properties (local) or SIGNING_* environment variables (CI).
+// Neither is committed; without them the release APK is built unsigned.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
+fun signingValue(key: String, env: String): String? =
+    keystoreProperties.getProperty(key)?.takeIf { it.isNotBlank() } ?: System.getenv(env)?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.hfspaces.explorer"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.hfspaces.explorer"
+        applicationId = "io.github.axd99999.spacesexplorer"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 3
-        versionName = "2.1.0"
+        targetSdk = 36
+        versionCode = 4
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "com.hfspaces.explorer.testing.HfTestRunner"
         vectorDrawables {
@@ -23,8 +35,21 @@ android {
         }
     }
 
+    signingConfigs {
+        val storeFile = signingValue("storeFile", "SIGNING_STORE_FILE")
+        if (storeFile != null) {
+            create("release") {
+                this.storeFile = rootProject.file(storeFile)
+                storePassword = signingValue("storePassword", "SIGNING_STORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "SIGNING_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -73,6 +98,9 @@ android {
 
     lint {
         abortOnError = true
+        // lintDebug (run in CI) covers every check. The extra release-time pass only repeats the fatal
+        // ones, and on Windows it fails on a locked file in its lint cache.
+        checkReleaseBuilds = false
         warningsAsErrors = false
         checkDependencies = false
         // Dependency upgrade nags are tracked separately from code health.

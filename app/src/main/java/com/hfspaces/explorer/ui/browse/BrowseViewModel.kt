@@ -7,8 +7,10 @@ import com.hfspaces.explorer.data.model.HfSpace
 import com.hfspaces.explorer.data.model.SpaceFilterState
 import com.hfspaces.explorer.data.model.appendDistinct
 import com.hfspaces.explorer.data.model.applyLocalFilters
+import com.hfspaces.explorer.data.model.hidingAdult
 import com.hfspaces.explorer.data.remote.HubSort
 import com.hfspaces.explorer.data.repository.RecentSearches
+import com.hfspaces.explorer.data.repository.SettingsRepository
 import com.hfspaces.explorer.data.repository.SpacesRepository
 import com.hfspaces.explorer.ui.common.userMessage
 import kotlinx.coroutines.CancellationException
@@ -18,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -54,7 +58,8 @@ private data class LoadState(
 
 class BrowseViewModel(
     private val repository: SpacesRepository,
-    private val recentSearches: RecentSearches
+    private val recentSearches: RecentSearches,
+    private val settings: SettingsRepository
 ) : ViewModel() {
     private val filter = MutableStateFlow(SpaceFilterState())
     private val loaded = MutableStateFlow<List<HfSpace>>(emptyList())
@@ -64,10 +69,12 @@ class BrowseViewModel(
     private var searchDebounce: Job? = null
     private var nextPage = 0
 
-    val uiState: StateFlow<BrowseUiState> = combine(filter, loaded, load, recentSearches.items) { filter, loaded, load, recents ->
+    private val showAdult = settings.settings.map { it.showAdultSpaces }.distinctUntilChanged()
+
+    val uiState: StateFlow<BrowseUiState> = combine(filter, loaded, load, recentSearches.items, showAdult) { filter, loaded, load, recents, adult ->
         BrowseUiState(
             filter = filter,
-            spaces = loaded.applyLocalFilters(filter),
+            spaces = loaded.hidingAdult(adult).applyLocalFilters(filter),
             loadedCount = loaded.size,
             isLoading = load.isLoading,
             isRefreshing = load.isRefreshing,
@@ -133,9 +140,9 @@ class BrowseViewModel(
         loadJob = viewModelScope.launch {
             load.update { it.copy(isLoadingMore = true, loadMoreError = null) }
             try {
-                val page = repository.fetchPage(nextPage, query.search, query.hubSort(), query.hubSdk())
+                val page = fetchFrom(nextPage, query)
                 loaded.update { it.appendDistinct(page.spaces) }
-                nextPage++
+                nextPage = page.nextPage
                 load.update { it.copy(isLoadingMore = false, canLoadMore = page.hasMore && page.spaces.isNotEmpty()) }
             } catch (e: CancellationException) {
                 throw e
@@ -161,9 +168,9 @@ class BrowseViewModel(
                     load.value = LoadState(isLoading = false, canLoadMore = false)
                 } else {
                     if (query.search.isNotBlank()) recentSearches.add(query.search)
-                    val page = repository.fetchPage(0, query.search, query.hubSort(), query.hubSdk())
+                    val page = fetchFrom(0, query)
                     loaded.value = page.spaces
-                    nextPage = 1
+                    nextPage = page.nextPage
                     load.value = LoadState(isLoading = false, canLoadMore = page.hasMore)
                 }
             } catch (e: CancellationException) {
@@ -173,6 +180,27 @@ class BrowseViewModel(
             }
         }
     }
+
+    /**
+     * Fetches the page at [start]. When adult Spaces are hidden and left fewer than a screenful
+     * visible, fetches a few more pages, so infinite scroll doesn't stall on a page of hidden results.
+     */
+    private suspend fun fetchFrom(start: Int, query: SpaceFilterState): FetchedPages {
+        val hideAdult = !settings.settings.value.showAdultSpaces
+        val spaces = mutableListOf<HfSpace>()
+        var page = start
+        while (true) {
+            val result = repository.fetchPage(page, query.search, query.hubSort(), query.hubSdk())
+            spaces += result.spaces
+            page++
+            val visible = spaces.count { !hideAdult || !it.isAdult }
+            val keepGoing = hideAdult && visible < MIN_VISIBLE_PER_LOAD && result.hasMore && result.spaces.isNotEmpty() &&
+                page - start <= MAX_EXTRA_PAGES
+            if (!keepGoing) return FetchedPages(spaces, page, result.hasMore)
+        }
+    }
+
+    private class FetchedPages(val spaces: List<HfSpace>, val nextPage: Int, val hasMore: Boolean)
 
     fun removeRecentSearch(query: String) = recentSearches.remove(query)
 
@@ -190,5 +218,7 @@ class BrowseViewModel(
 
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 400L
+        const val MIN_VISIBLE_PER_LOAD = 6
+        const val MAX_EXTRA_PAGES = 3
     }
 }

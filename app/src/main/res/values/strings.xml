@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">HF Spaces</string>
+    <string name="app_name">Spaces Explorer</string>
     <string name="widget_name">Latest output</string>
     <string name="widget_description">Shows the newest output saved from your runs</string>
     <string name="widget_empty_title">No outputs yet</string>

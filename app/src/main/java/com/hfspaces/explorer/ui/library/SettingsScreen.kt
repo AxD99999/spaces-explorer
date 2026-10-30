@@ -1,6 +1,7 @@
 package com.hfspaces.explorer.ui.library
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +59,7 @@ class SettingsViewModel(
     fun setTheme(mode: ThemeMode) = settings.setThemeMode(mode)
     fun setDynamicColor(enabled: Boolean) = settings.setDynamicColor(enabled)
     fun setNotify(enabled: Boolean) = settings.setNotifyOnFinish(enabled)
+    fun setShowAdult(enabled: Boolean) = settings.setShowAdultSpaces(enabled)
     fun clearSearchHistory() = recentSearches.clear()
 
     /** Deletes cached pages and staged uploads; saved outputs and favourites are untouched. */
@@ -128,6 +130,14 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     runCatching { context.startActivity(intent) }
                 }) { Text("System notification settings") }
             }
+            SectionCard("Content") {
+                SwitchSetting(
+                    title = "Show adult Spaces",
+                    subtitle = "Spaces Hugging Face tags as not for all audiences. Favourites and your own Spaces are always shown.",
+                    checked = settings.showAdultSpaces,
+                    onChange = viewModel::setShowAdult
+                )
+            }
             SectionCard("Storage") {
                 Text("Cached lists and files staged for upload. Saved outputs and favourites aren't affected.", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -144,12 +154,21 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 }
             }
             SectionCard("About") {
-                Text("HF Spaces Explorer ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
-                Text("Not affiliated with Hugging Face.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Spaces Explorer for Hugging Face ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Unofficial app, not affiliated with or endorsed by Hugging Face. Open source under the Apache License 2.0.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(onClick = {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL))) }
+                }) { Text("Source code") }
             }
         }
     }
 }
+
+private const val SOURCE_URL = "https://github.com/AxD99999/HF-Spaces-Explorer"
 
 @Composable
 private fun SwitchSetting(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {

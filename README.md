@@ -1,11 +1,18 @@
-# Hugging Face Spaces Explorer (Android)
+# Spaces Explorer for Hugging Face
 
 A native Android app for browsing [Hugging Face Spaces](https://huggingface.co/spaces) and running Gradio Spaces directly from your phone.
+
+> **Unofficial.** This is an independent open-source project. It isn't affiliated with or endorsed by Hugging Face. "Hugging Face" is a trademark of Hugging Face, Inc.
+
+## Install
+
+Download the APK from the [latest release](https://github.com/AxD99999/HF-Spaces-Explorer/releases/latest) and open it on your phone. You'll need to allow installs from your browser or file manager. Android 8.0 or newer is required.
 
 ## Features
 
 ### Discover
 - **Browse**: the trending Spaces feed with infinite scroll, pull to refresh, debounced search on the Hub, semantic categories, and filters. Sort by trending, likes, recently updated or newest, and filter by SDK, on the Hub's side. Status, hardware, pinned and featured filters apply on the device. Recent searches are remembered. The last trending page is cached, so the app opens offline.
+- **Adult content hidden by default**: Spaces that Hugging Face tags `not-for-all-audiences` are left out of Browse and search until you turn on "Show adult Spaces" in Settings. Untagged Spaces can't be caught, and Spaces you favourited or own are always shown.
 - **Space details**: status, hardware, the API's endpoints with their inputs and outputs, and ready-to-copy Python / JavaScript / cURL snippets (taken from the Space itself on Gradio 5+).
 - **Compare**: run the same prompt on two Spaces side by side.
 
@@ -29,12 +36,12 @@ A native Android app for browsing [Hugging Face Spaces](https://huggingface.co/s
 - **Access tokens**: optional Hugging Face tokens for private, gated or ZeroGPU Spaces. They're encrypted with an Android Keystore key and only ever sent to `huggingface.co` / `*.hf.space`.
 
 ### App
-- **Settings**: light/dark/system theme, Material You dynamic colour on Android 12+, and finished-run notifications on or off.
+- **Settings**: light/dark/system theme, Material You dynamic colour on Android 12+, finished-run notifications, and adult content.
 - **Tablets and foldables**: on wide screens the Space details open in a second pane next to the list.
 
 ## Building
 
-Requirements: JDK 17+, Android SDK 35.
+Requirements: JDK 17 to 21 to run Gradle, Android SDK 36.
 
 ```bash
 ./gradlew assembleDebug          # app/build/outputs/apk/debug/
@@ -44,6 +51,44 @@ Requirements: JDK 17+, Android SDK 35.
 ```
 
 `testDebugUnitTest` also runs an end-to-end UI test against a fake Hub and writes phone screenshots to `app/build/outputs/screenshots/` for review. CI runs the instrumented tests on an API 34 emulator.
+
+## Releasing
+
+Releases are signed APKs published on GitHub. The signing key never goes in the repo: `keystore.properties`, `*.jks` and `*.keystore` are ignored by git.
+
+1. **Create a key once**, and back it up somewhere safe. If you lose it, phones can't update to your next release without uninstalling first.
+
+   ```bash
+   keytool -genkeypair -v -keystore release.jks -alias release -keyalg RSA -keysize 4096 -validity 10000
+   ```
+
+2. **Local signed builds**: put `release.jks` in the project root and create `keystore.properties` next to it:
+
+   ```properties
+   storeFile=release.jks
+   storePassword=...
+   keyAlias=release
+   keyPassword=...
+   ```
+
+   `./gradlew assembleRelease` then writes a signed `app/build/outputs/apk/release/app-release.apk`. Without the file, the APK is unsigned.
+
+3. **Releases from CI**: add four repository secrets under *Settings → Secrets and variables → Actions*:
+
+   | Secret | Value |
+   | --- | --- |
+   | `SIGNING_KEYSTORE_BASE64` | the keystore, base64 encoded (`base64 -w0 release.jks`, or in PowerShell `[Convert]::ToBase64String([IO.File]::ReadAllBytes("release.jks"))`) |
+   | `SIGNING_STORE_PASSWORD` | the keystore password |
+   | `SIGNING_KEY_ALIAS` | `release` |
+   | `SIGNING_KEY_PASSWORD` | the key password |
+
+   Then bump `versionCode` and `versionName` in `app/build.gradle.kts` and push a matching tag:
+
+   ```bash
+   git tag v2.2.0 && git push origin v2.2.0
+   ```
+
+   The Release workflow checks the tag matches `versionName`, builds the APK and publishes a GitHub Release with the APK and its SHA-256 checksum.
 
 ## Architecture
 
@@ -65,3 +110,14 @@ Security notes:
 - Space ids and hosts are validated before use. Only `https://<label>.hf.space` hosts are called, so a malicious listing can't redirect requests (or your token) elsewhere.
 - Endpoint names are validated, and errors reported by a Space are shown as-is rather than hidden behind silent fallbacks.
 - Backups are disabled, because Keystore-encrypted tokens can't be restored onto another device.
+
+## Privacy
+
+- The app has no analytics, ads or tracking, and no server of its own. It talks to Hugging Face and to the Spaces you open.
+- Hugging Face access tokens are encrypted on the device and only sent to `huggingface.co` and `*.hf.space`.
+- What you type or upload when you run a Space goes to that Space. Spaces are run by third parties on Hugging Face, so treat inputs as you would on the Space's web page.
+- Favourites, run history and saved outputs stay on your device.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
