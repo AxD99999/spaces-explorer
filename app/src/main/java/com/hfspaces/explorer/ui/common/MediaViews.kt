@@ -39,9 +39,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.SubcomposeAsyncImage
+import com.hfspaces.explorer.data.gradio.MARKDOWN_MIME
 import com.hfspaces.explorer.data.gradio.OutputItem
 import com.hfspaces.explorer.data.model.GeneratedMediaType
 import com.hfspaces.explorer.data.remote.AppJson
+import com.hfspaces.explorer.ui.markdown.MarkdownText
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
@@ -122,7 +124,11 @@ fun OutputList(items: List<OutputItem>, onCopied: () -> Unit) {
                     }
                 }
                 GeneratedMediaType.TEXT -> SelectionContainer {
-                    Text(item.text.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                    if (item.mimeType == MARKDOWN_MIME) {
+                        MarkdownText(item.text.orEmpty(), style = MaterialTheme.typography.bodyLarge, onCopied = onCopied)
+                    } else {
+                        Text(item.text.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                    }
                 }
                 GeneratedMediaType.OTHER -> CodeBlock(prettyJson(item.text.orEmpty()), onCopied = onCopied)
             }

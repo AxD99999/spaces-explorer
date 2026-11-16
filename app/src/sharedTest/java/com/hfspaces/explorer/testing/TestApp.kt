@@ -45,6 +45,11 @@ object FakeHub {
 
     @Volatile private var lastName = ""
 
+    /** When true the Space is a `gr.ChatInterface`: one message in, history kept per session. */
+    @Volatile var chat = false
+    private val chatTurns = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val chatReplies = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     private fun route(request: RecordedRequest): MockResponse {
         val path = request.path.orEmpty()
         return when {
@@ -68,6 +73,31 @@ object FakeHub {
                         """"cardData":{"title":"Hello World","emoji":"👋","sdk":"gradio","sdk_version":"6.32.0","license":"mit","pinned":false},""" +
                         """"models":["openai/whisper-large-v3"],""" +
                         """"runtime":{"stage":"RUNNING","hardware":{"current":"cpu-basic","requested":"cpu-basic"}}}"""
+                )
+            }
+            chat && path == "/gradio_api/info" -> json(Fixtures.read("info_chatinterface.json"))
+            // As on a real ChatInterface: the API function takes the message plus a hidden history state.
+            chat && path == "/config" -> json(
+                """{"version":"6.32.0","protocol":"sse_v3","api_prefix":"/gradio_api",""" +
+                    """"components":[{"id":16,"type":"textbox"},{"id":20,"type":"state"},{"id":19,"type":"json"}],""" +
+                    """"dependencies":[{"id":6,"api_name":"slow_echo","queue":true,"inputs":[16,20],"outputs":[19,20]}]}"""
+            )
+            chat && request.method == "POST" && path == "/gradio_api/queue/join" -> {
+                val body = AppJson.parseToJsonElement(request.body.readUtf8()) as JsonObject
+                val session = body.getValue("session_hash").jsonPrimitive.content
+                val message = (body["data"] as JsonArray).first().jsonPrimitive.content
+                val turn = chatTurns.merge(session, 1, Int::plus)
+                chatReplies[session] = "You said **" + message + "** (turn " + turn + ")"
+                json("""{"event_id":"chat-$turn"}""")
+            }
+            chat && path.startsWith("/gradio_api/queue/data") -> {
+                val session = path.substringAfter("session_hash=")
+                val turn = chatTurns[session]
+                val reply = AppJson.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), kotlinx.serialization.json.JsonPrimitive(chatReplies[session].orEmpty()))
+                MockResponse().setHeader("Content-Type", "text/event-stream").setBody(
+                    """data: {"msg":"process_starts","event_id":"chat-$turn"}""" + "\n\n" +
+                        """data: {"msg":"process_completed","event_id":"chat-$turn","output":{"data":[$reply,null]},"success":true}""" + "\n\n" +
+                        """data: {"msg":"close_stream"}""" + "\n\n"
                 )
             }
             path == "/gradio_api/info" -> json(Fixtures.read("info_hello-world.json"))

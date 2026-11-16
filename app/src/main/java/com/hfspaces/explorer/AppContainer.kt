@@ -2,7 +2,6 @@ package com.hfspaces.explorer
 
 import android.content.Context
 import androidx.core.net.toUri
-import com.hfspaces.explorer.data.gradio.ChatMessage
 import com.hfspaces.explorer.data.local.AppDatabase
 import com.hfspaces.explorer.data.model.HfSpace
 import com.hfspaces.explorer.data.remote.GradioClient
@@ -10,6 +9,7 @@ import com.hfspaces.explorer.data.remote.HfHubClient
 import com.hfspaces.explorer.data.remote.SpaceIds
 import com.hfspaces.explorer.data.remote.defaultOkHttpClient
 import com.hfspaces.explorer.data.repository.ApiKeysRepository
+import com.hfspaces.explorer.data.repository.ChatRepository
 import com.hfspaces.explorer.data.repository.CollectionsRepository
 import com.hfspaces.explorer.data.repository.ContentOpener
 import com.hfspaces.explorer.data.repository.FavoritesRepository
@@ -41,7 +41,6 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.File
 import java.io.FileNotFoundException
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Manual dependency graph, created once per process by [HfSpacesApplication].
@@ -89,8 +88,7 @@ class AppContainer(
     val uploadStaging = UploadStaging(appContext.contentResolver, File(appContext.cacheDir, "uploads"))
     val deepLinks = DeepLinks(applicationScope, uploadStaging)
 
-    /** Chat transcripts per Space, kept for the life of the process. */
-    val chatTranscripts = ConcurrentHashMap<String, List<ChatMessage>>()
+    val chatRepository = ChatRepository(database.chatDao())
 
     val taskManager = TaskManager(
         scope = applicationScope,

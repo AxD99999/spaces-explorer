@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Upsert
 import com.hfspaces.explorer.data.local.entity.ApiKeyEntity
+import com.hfspaces.explorer.data.local.entity.ChatMessageEntity
 import com.hfspaces.explorer.data.local.entity.CollectionEntity
 import com.hfspaces.explorer.data.local.entity.CollectionSpaceEntity
 import com.hfspaces.explorer.data.local.entity.PresetEntity
@@ -160,4 +161,33 @@ interface CollectionDao {
 
     @Query("DELETE FROM collection_spaces WHERE spaceId = :spaceId")
     suspend fun removeSpaceEverywhere(spaceId: String)
+}
+
+@Dao
+interface ChatDao {
+    @Query("SELECT * FROM chat_messages WHERE spaceId = :spaceId ORDER BY id")
+    suspend fun forSpace(spaceId: String): List<ChatMessageEntity>
+
+    @Insert
+    suspend fun insert(message: ChatMessageEntity)
+
+    /** Takes back the newest [count] messages, e.g. a failed turn that is being retried. */
+    @Query("DELETE FROM chat_messages WHERE id IN (SELECT id FROM chat_messages WHERE spaceId = :spaceId ORDER BY id DESC LIMIT :count)")
+    suspend fun deleteLast(spaceId: String, count: Int)
+
+    /** Keeps a conversation bounded. */
+    @Query(
+        "DELETE FROM chat_messages WHERE spaceId = :spaceId AND id NOT IN " +
+            "(SELECT id FROM chat_messages WHERE spaceId = :spaceId ORDER BY id DESC LIMIT :keep)"
+    )
+    suspend fun trim(spaceId: String, keep: Int)
+
+    @Query("DELETE FROM chat_messages WHERE spaceId = :spaceId")
+    suspend fun deleteForSpace(spaceId: String)
+
+    @Query("SELECT COUNT(*) FROM chat_messages")
+    suspend fun count(): Int
+
+    @Query("DELETE FROM chat_messages")
+    suspend fun clear()
 }

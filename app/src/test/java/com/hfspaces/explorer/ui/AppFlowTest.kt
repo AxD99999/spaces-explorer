@@ -23,6 +23,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import com.hfspaces.explorer.HfSpacesApplication
 import com.hfspaces.explorer.MainActivity
+import com.hfspaces.explorer.testing.FakeHub
 import com.hfspaces.explorer.testing.TestApp
 import org.junit.Assert.assertFalse
 import org.junit.Rule
@@ -185,6 +186,45 @@ class AppFlowTest {
         screenshot("16-search-open-link")
         compose.onNodeWithText("Open gradio/hello_world").performClick()
         compose.waitUntilAtLeastOneExists(hasContentDescription("Share Space"), timeout)
+    }
+
+    @Test
+    fun `chat remembers the conversation and renders markdown`() {
+        FakeHub.chat = true
+        try {
+            compose.waitUntilAtLeastOneExists(hasText("Hello World"), timeout)
+            compose.onAllNodesWithText("Run")[0].performClick()
+            compose.waitUntilAtLeastOneExists(hasContentDescription("Open as chat"), timeout)
+            compose.onNodeWithContentDescription("Open as chat").performClick()
+            compose.waitUntilAtLeastOneExists(hasText("Start a conversation"), timeout)
+
+            fun say(text: String) {
+                compose.onNode(hasSetTextAction()).performTextInput(text)
+                compose.onNodeWithContentDescription("Send").performClick()
+            }
+            say("hello")
+            // "**hello**" arrives as Markdown and is shown as bold text, not as asterisks.
+            compose.waitUntilAtLeastOneExists(hasText("You said hello (turn 1)"), timeout)
+            say("and again")
+            // Same Gradio session as before, or the Space would call this turn 1 too.
+            compose.waitUntilAtLeastOneExists(hasText("You said and again (turn 2)"), timeout)
+            screenshot("17-chat")
+
+            // The conversation is stored: leaving and coming back shows it again.
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.waitUntilAtLeastOneExists(hasContentDescription("Open as chat"), timeout)
+            compose.onNodeWithContentDescription("Open as chat").performClick()
+            compose.waitUntilAtLeastOneExists(hasText("You said and again (turn 2)"), timeout)
+            compose.onNodeWithText("The Space no longer remembers the messages above").assertDoesNotExist()
+
+            compose.onNodeWithContentDescription("Clear conversation").performClick()
+            compose.onNodeWithText("Clear").performClick()
+            compose.waitUntilAtLeastOneExists(hasText("Start a conversation"), timeout)
+            say("fresh")
+            compose.waitUntilAtLeastOneExists(hasText("You said fresh (turn 1)"), timeout)
+        } finally {
+            FakeHub.chat = false
+        }
     }
 
     @Test

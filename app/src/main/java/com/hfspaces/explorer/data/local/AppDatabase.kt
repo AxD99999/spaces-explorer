@@ -9,6 +9,8 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.hfspaces.explorer.data.local.dao.ApiKeysDao
+import com.hfspaces.explorer.data.local.dao.ChatDao
+import com.hfspaces.explorer.data.local.entity.ChatMessageEntity
 import com.hfspaces.explorer.data.local.entity.PresetEntity
 import com.hfspaces.explorer.data.local.entity.CollectionSpaceEntity
 import com.hfspaces.explorer.data.local.entity.CollectionEntity
@@ -31,9 +33,10 @@ import com.hfspaces.explorer.data.security.TokenCipher
         TaskEntity::class,
         PresetEntity::class,
         CollectionEntity::class,
-        CollectionSpaceEntity::class
+        CollectionSpaceEntity::class,
+        ChatMessageEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -43,6 +46,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun presetDao(): PresetDao
     abstract fun collectionDao(): CollectionDao
+    abstract fun chatDao(): ChatDao
 
     companion object {
         const val NAME = "hf_spaces_database"
@@ -54,7 +58,7 @@ abstract class AppDatabase : RoomDatabase() {
                 Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, name)
             }
             // No destructive fallback: a missing migration must fail loudly rather than wipe user data.
-            return builder.addMigrations(migration1To2(cipher), MIGRATION_2_3).build()
+            return builder.addMigrations(migration1To2(cipher), MIGRATION_2_3, MIGRATION_3_4).build()
         }
     }
 }
@@ -103,5 +107,16 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
                 "PRIMARY KEY(`collectionId`, `spaceId`))"
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_collection_spaces_spaceId` ON `collection_spaces` (`spaceId`)")
+    }
+}
+
+/** v4: chat transcripts. */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `chat_messages` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `spaceId` TEXT NOT NULL, " +
+                "`role` TEXT NOT NULL, `text` TEXT NOT NULL, `isError` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_messages_spaceId` ON `chat_messages` (`spaceId`)")
     }
 }

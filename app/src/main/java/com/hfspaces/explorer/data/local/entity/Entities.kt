@@ -119,6 +119,18 @@ data class TaskEntity(
     val inputsJson: String? = null
 )
 
+/** One message of a chat with a Space (v4); transcripts survive restarts. */
+@Entity(tableName = "chat_messages", indices = [Index("spaceId")])
+data class ChatMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val spaceId: String,
+    /** ChatRole name. */
+    val role: String,
+    val text: String,
+    val isError: Boolean,
+    val createdAt: Long
+)
+
 /** A named set of inputs for one endpoint of a Space. */
 @Entity(tableName = "presets", indices = [Index("spaceId")])
 data class PresetEntity(

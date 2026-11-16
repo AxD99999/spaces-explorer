@@ -139,6 +139,10 @@ class GradioClient(private val client: OkHttpClient) {
      *
      * Errors reported by the Space surface as [SpaceExecutionException] and are never retried
      * against another route, so the real cause reaches the user.
+     *
+     * @param sessionHash keeps calls in one Gradio session. Apps hold per-session state there
+     * (`gr.ChatInterface` keeps the conversation in it), so a chat must reuse its session to be
+     * remembered. Null runs the call in a session of its own.
      */
     suspend fun predict(
         host: HttpUrl,
@@ -146,6 +150,7 @@ class GradioClient(private val client: OkHttpClient) {
         endpoint: String,
         data: JsonArray,
         token: String?,
+        sessionHash: String? = null,
         onUpdate: (CallUpdate) -> Unit = {}
     ): JsonElement {
         val apiName = endpoint.trim('/')
@@ -154,9 +159,9 @@ class GradioClient(private val client: OkHttpClient) {
         val config = config(host, token)
         val call = config?.prepareQueuedCall(apiName, data)
         if (config != null && call != null) {
-            queuePredict(host, config.apiPrefix ?: apiPrefix, config, call, token, onUpdate)?.let { return it }
+            queuePredict(host, config.apiPrefix ?: apiPrefix, config, call, token, sessionHash, onUpdate)?.let { return it }
         }
-        return callPredict(host, apiPrefix, apiName, data, token, onUpdate)
+        return callPredict(host, apiPrefix, apiName, data, token, sessionHash, onUpdate)
     }
 
     private suspend fun config(host: HttpUrl, token: String?): GradioConfig? {
@@ -186,10 +191,11 @@ class GradioClient(private val client: OkHttpClient) {
         config: GradioConfig,
         call: QueuedCall,
         token: String?,
+        sessionHash: String?,
         onUpdate: (CallUpdate) -> Unit
     ): JsonElement? {
         val fnIndex = call.fnIndex
-        val session = UUID.randomUUID().toString().replace("-", "").take(11)
+        val session = sessionHash?.takeIf { SESSION_HASH.matches(it) } ?: newSessionHash()
         val joinBody = buildJsonObject {
             put("data", call.data)
             put("fn_index", fnIndex)
@@ -280,11 +286,13 @@ class GradioClient(private val client: OkHttpClient) {
         apiName: String,
         data: JsonArray,
         token: String?,
+        sessionHash: String?,
         onUpdate: (CallUpdate) -> Unit
     ): JsonElement {
-
-        val body = buildJsonObject { put("data", data) }.toString()
-            .toRequestBody("application/json".toMediaType())
+        val body = buildJsonObject {
+            put("data", data)
+            sessionHash?.takeIf { SESSION_HASH.matches(it) }?.let { put("session_hash", it) }
+        }.toString().toRequestBody("application/json".toMediaType())
         val submit = Request.Builder()
             .url(url(host, apiPrefix, "call", apiName))
             .post(body)
@@ -413,7 +421,11 @@ class GradioClient(private val client: OkHttpClient) {
     companion object {
         private val API_PREFIXES = listOf("/gradio_api", "")
         private val API_NAME = Regex("^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+        private val SESSION_HASH = Regex("^[A-Za-z0-9]{6,40}$")
         private const val CONFIG_TTL_MS = 5 * 60 * 1000L
         private const val CONFIG_TIMEOUT_MS = 10_000L
+
+        /** A fresh session id, in the shape Gradio's own clients use. */
+        fun newSessionHash(): String = UUID.randomUUID().toString().replace("-", "").take(11)
     }
 }

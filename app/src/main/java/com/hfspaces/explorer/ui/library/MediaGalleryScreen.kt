@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -44,6 +45,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -58,6 +60,7 @@ import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.hfspaces.explorer.data.gradio.MARKDOWN_MIME
 import com.hfspaces.explorer.data.model.GeneratedMediaItem
 import com.hfspaces.explorer.data.model.GeneratedMediaType
 import com.hfspaces.explorer.ui.LocalSnackbarHostState
@@ -68,6 +71,8 @@ import com.hfspaces.explorer.ui.common.RemoteImage
 import com.hfspaces.explorer.ui.common.openFile
 import com.hfspaces.explorer.ui.common.prettyJson
 import com.hfspaces.explorer.ui.common.shareContent
+import com.hfspaces.explorer.ui.markdown.MarkdownText
+import com.hfspaces.explorer.ui.markdown.plainText
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -179,7 +184,8 @@ private fun MediaTile(item: GeneratedMediaItem, onClick: () -> Unit) {
             if (item.type == GeneratedMediaType.IMAGE && source != null) {
                 AsyncImage(model = source, contentDescription = item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             } else if (item.textContent != null && item.type == GeneratedMediaType.TEXT) {
-                Text(item.textContent, style = MaterialTheme.typography.bodySmall, maxLines = 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(10.dp))
+                val preview = remember(item.textContent) { if (item.mimeType == MARKDOWN_MIME) plainText(item.textContent) else item.textContent }
+                Text(preview, style = MaterialTheme.typography.bodySmall, maxLines = 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(10.dp))
             } else {
                 Icon(
                     when (item.type) {
@@ -222,7 +228,12 @@ private fun MediaDetailSheet(item: GeneratedMediaItem, viewModel: MediaViewModel
                 GeneratedMediaType.VIDEO -> source?.let { MediaPlayer(it, isVideo = true) }
                 GeneratedMediaType.AUDIO -> source?.let { MediaPlayer(it, isVideo = false) }
                 GeneratedMediaType.OTHER -> item.textContent?.let { CodeBlock(prettyJson(it), onCopied = { scope.launch { snackbar.showSnackbar("Copied") } }) }
-                GeneratedMediaType.TEXT -> item.textContent?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+                GeneratedMediaType.TEXT -> item.textContent?.let { text ->
+                    SelectionContainer {
+                        if (item.mimeType == MARKDOWN_MIME) MarkdownText(text, style = MaterialTheme.typography.bodyLarge)
+                        else Text(text, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
                 GeneratedMediaType.FILE -> Text(item.url?.substringAfterLast('/') ?: "File", style = MaterialTheme.typography.bodyMedium)
             }
             if (item.localPath == null && item.url != null) {

@@ -66,7 +66,8 @@ private fun collect(
             if (looksLikeFile) {
                 out += OutputItem(type, url = resolveFileUrl(text, host, apiPrefix), fileName = text.substringAfterLast('/'), label = label)
             } else {
-                out += OutputItem(GeneratedMediaType.TEXT, text = text, label = label)
+                // gr.Markdown output is marked as such, so it is rendered rather than shown as source.
+                out += OutputItem(GeneratedMediaType.TEXT, text = text, label = label, mimeType = if (component == "markdown") MARKDOWN_MIME else null)
             }
         }
         is JsonObject -> {
@@ -96,6 +97,8 @@ private fun collect(
         }
     }
 }
+
+const val MARKDOWN_MIME = "text/markdown"
 
 private val FILE_COMPONENTS = setOf("image", "audio", "video", "file", "gallery", "model3d")
 

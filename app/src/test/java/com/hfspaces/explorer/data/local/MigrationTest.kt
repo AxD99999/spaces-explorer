@@ -3,8 +3,11 @@ package com.hfspaces.explorer.data.local
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
+import com.hfspaces.explorer.data.gradio.ChatMessage
+import com.hfspaces.explorer.data.gradio.ChatRole
 import com.hfspaces.explorer.data.gradio.FormValue
 import com.hfspaces.explorer.data.repository.ApiKeysRepository
+import com.hfspaces.explorer.data.repository.ChatRepository
 import com.hfspaces.explorer.data.repository.CollectionsRepository
 import com.hfspaces.explorer.data.repository.PresetsRepository
 import com.hfspaces.explorer.data.repository.FavoritesRepository
@@ -75,9 +78,49 @@ class MigrationTest {
             val colId = collections.create("Image tools")
             collections.setMember(colId, "gradio/hello_world", true)
             assertEquals(1, collections.observe().first().single().count)
+
+            // v4: chat transcripts.
+            val chats = ChatRepository(database.chatDao())
+            chats.append("gradio/hello_world", ChatMessage(ChatRole.USER, "hi"))
+            assertEquals(listOf(ChatMessage(ChatRole.USER, "hi")), chats.load("gradio/hello_world"))
         } finally {
             database.close()
             context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun `chat transcripts are stored per space and sessions last for the process`() = runBlocking<Unit> {
+        val database = AppDatabase.build(context, cipher, name = null)
+        try {
+            val chats = ChatRepository(database.chatDao())
+            val a = "a/chat"
+            chats.append(a, ChatMessage(ChatRole.USER, "one"))
+            chats.append(a, ChatMessage(ChatRole.ASSISTANT, "two"))
+            chats.append(a, ChatMessage(ChatRole.USER, "three"))
+            chats.append(a, ChatMessage(ChatRole.ASSISTANT, "failed", isError = true))
+            chats.append("b/other", ChatMessage(ChatRole.USER, "elsewhere"))
+            assertEquals(listOf("one", "two", "three", "failed"), chats.load(a).map { it.text })
+            assertTrue(chats.load(a).last().isError)
+
+            // A retry takes the failed turn back.
+            chats.removeLast(a, 2)
+            assertEquals(listOf("one", "two"), chats.load(a).map { it.text })
+            assertEquals(listOf("elsewhere"), chats.load("b/other").map { it.text })
+
+            // A restored transcript has no session until the next message starts one after it.
+            assertNull(chats.session(a))
+            val session = chats.startSession(a, messagesSoFar = 2)
+            assertEquals(2, session.firstMessage)
+            assertEquals(session, chats.session(a))
+            assertTrue(session.hash.matches(Regex("[a-z0-9]{11}")))
+
+            chats.clear(a)
+            assertTrue(chats.load(a).isEmpty())
+            assertNull(chats.session(a))
+            assertEquals(1, chats.messageCount())
+        } finally {
+            database.close()
         }
     }
 

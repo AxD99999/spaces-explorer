@@ -45,7 +45,7 @@ val AppViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
     }
     initializer {
         val c = container()
-        ChatViewModel(createSavedStateHandle(), c.spacesRepository, c.favoritesRepository, c.apiKeysRepository, c.gradioClient, c.chatTranscripts)
+        ChatViewModel(createSavedStateHandle(), c.spacesRepository, c.favoritesRepository, c.apiKeysRepository, c.gradioClient, c.chatRepository)
     }
     initializer { FavouritesViewModel(container().favoritesRepository) }
     initializer {

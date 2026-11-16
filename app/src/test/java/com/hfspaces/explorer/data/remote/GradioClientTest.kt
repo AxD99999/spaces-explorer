@@ -256,6 +256,25 @@ class GradioClientTest {
     }
 
     @Test
+    fun `calls can stay in one session`() = runBlocking {
+        route(config = queueConfig) { req ->
+            when {
+                req.path == "/gradio_api/queue/join" -> MockResponse().setBody("""{"event_id":"e1"}""")
+                else -> queueData("""{"msg":"process_completed","event_id":"e1","output":{"data":["ok"]},"success":true}""")
+            }
+        }
+        repeat(2) { client.predict(host, "/gradio_api", "predict", JsonArray(emptyList()), null, sessionHash = "abc123def45") }
+        val joins = calls.filter { it.path == "/gradio_api/queue/join" }.map { it.body.readUtf8() }
+        assertEquals(2, joins.size)
+        assertTrue(joins.toString(), joins.all { it.contains("\"session_hash\":\"abc123def45\"") })
+        assertEquals(2, calls.count { it.path == "/gradio_api/queue/data?session_hash=abc123def45" })
+
+        // Anything that isn't a plain session id is replaced rather than sent on.
+        client.predict(host, "/gradio_api", "predict", JsonArray(emptyList()), null, sessionHash = "bad id&x=1")
+        assertTrue(calls.none { it.path.orEmpty().contains("bad") })
+    }
+
+    @Test
     fun `queue failures surface the space error`() = runBlocking {
         route(config = queueConfig) { req ->
             if (req.method == "POST") MockResponse().setBody("""{"event_id":"e1"}""")
