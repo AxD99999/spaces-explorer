@@ -28,7 +28,7 @@ data class InputPreset(
 class PresetsRepository(private val dao: PresetDao) {
     fun observe(spaceId: String): Flow<List<InputPreset>> = dao.observeForSpace(spaceId).map { rows ->
         rows.mapNotNull { row ->
-            decodeFormValues(row.valuesJson)?.let { InputPreset(row.id, row.name, row.endpoint, it) }
+            decodeFormValues(row.valuesJson)?.let { values -> InputPreset(row.id, row.name, row.endpoint, values.filterValues { it !is FormValue.Files }) }
         }
     }
 

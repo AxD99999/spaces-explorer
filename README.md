@@ -13,22 +13,26 @@ Download the APK from the [latest release](https://github.com/AxD99999/spaces-ex
 ### Discover
 - **Browse**: the trending Spaces feed with infinite scroll, pull to refresh, debounced search on the Hub, semantic categories, and filters. Sort by trending, likes, recently updated or newest, and filter by SDK, on the Hub's side. Status, hardware, pinned and featured filters apply on the device. Recent searches are remembered. The last trending page is cached, so the app opens offline.
 - **Adult content hidden by default**: Spaces that Hugging Face tags `not-for-all-audiences` are left out of Browse and search until you turn on "Show adult Spaces" in Settings. Untagged Spaces can't be caught, and Spaces you favourited or own are always shown.
-- **Space details**: status, hardware, the API's endpoints with their inputs and outputs, and ready-to-copy Python / JavaScript / cURL snippets (taken from the Space itself on Gradio 5+).
-- **Compare**: run the same prompt on two Spaces side by side.
+- **Space details**: status, hardware, when it was last updated, license, SDK version, the models and datasets it uses, the API's endpoints with their inputs and outputs, and ready-to-copy Python / JavaScript / cURL snippets (taken from the Space itself on Gradio 5+).
+- **Open by link**: links to Space pages (`huggingface.co/spaces/…`) open in the app, a Space page shared from your browser opens too, and pasting a link or `owner/name` into search jumps straight to that Space. Share or copy a Space's link from its details.
+- **Any Space, not only Gradio**: Docker, Streamlit and static Spaces open as their own web app in a browser tab on top of the app. Gradio Spaces offer that too, next to "Run in app".
+- **Compare**: run the same prompt on up to three Spaces side by side.
 
 ### Run
 - **Runner**: a form generated from the Space's Gradio schema. Each component gets the right control: text, number, slider (with its real range), checkbox, radio/dropdown, multi-select, image/audio/video/file pickers, and gallery uploads. Files are uploaded through Gradio's upload API, never inlined as base64.
 - **Queue aware**: runs go through Gradio's queue protocol, so you see your place in the queue, the ETA, step progress and streamed output. Stopping a run tells the Space to drop it. Spaces without the queue fall back to the `/call` API.
 - **Wake sleeping Spaces**: a sleeping or paused Space can be woken from the runner, which polls until it's up.
-- **Chat**: Spaces built on `gr.ChatInterface` open in a chat view with streamed replies.
+- **Camera and examples**: image and video inputs can be shot with the camera, and "Example" fills a form with the Space's own sample values.
+- **Chat**: Spaces built on `gr.ChatInterface` open in a chat view with streamed replies rendered as Markdown. A conversation stays in one Gradio session, so the Space remembers earlier turns, and it is saved on the device. Copy a reply, or retry one that failed.
 - **Presets**: save a form's inputs under a name and reload them later.
 - **Run again**: any run in the history reopens the runner with the same inputs.
 - **Share to the app**: share text or images from another app, pick a Space, and the form is pre-filled.
 - **Background runs**: runs keep going in a foreground service while you use other apps. A notification shows progress and has a Stop all action, and you get a notification with a thumbnail when a run finishes. History survives restarts.
 
 ### Keep
-- **Saved outputs**: images, audio, video, files and text from each run are copied into app storage, because Gradio deletes its temporary files. A full-screen viewer has pinch to zoom and swipe, and images can be saved to the system gallery or shared.
+- **Saved outputs**: images, audio, video, files and text from each run are copied into app storage, because Gradio deletes its temporary files. The runner shows those copies once a run is done. Search them, view images full screen with pinch to zoom and swipe, and save them to the system gallery or share them.
 - **Favourites**: refreshed from the Hub, sortable, grouped into your own collections. You can also import the Spaces you liked on Hugging Face.
+- **Backup**: export favourites, collections, presets and settings to a file and import them on another phone. Tokens are never included.
 - **Home screen**: launcher shortcuts for your most used Spaces, and a widget that shows your latest output.
 
 ### Your Spaces
@@ -36,7 +40,7 @@ Download the APK from the [latest release](https://github.com/AxD99999/spaces-ex
 - **Access tokens**: optional Hugging Face tokens for private, gated or ZeroGPU Spaces. They're encrypted with an Android Keystore key and only ever sent to `huggingface.co` / `*.hf.space`.
 
 ### App
-- **Settings**: light/dark/system theme, Material You dynamic colour on Android 12+, finished-run notifications, and adult content.
+- **Settings**: light/dark/system theme, Material You dynamic colour on Android 12+, finished-run notifications, adult content, link handling, backup, and what the app stores.
 - **Tablets and foldables**: on wide screens the Space details open in a second pane next to the list.
 
 ## Building
@@ -85,7 +89,7 @@ Releases are signed APKs published on GitHub. The signing key never goes in the 
    Then bump `versionCode` and `versionName` in `app/build.gradle.kts` and push a matching tag:
 
    ```bash
-   git tag v2.2.0 && git push origin v2.2.0
+   git tag v2.3.0 && git push origin v2.3.0
    ```
 
    The Release workflow checks the tag matches `versionName`, builds the APK and publishes a GitHub Release with the APK and its SHA-256 checksum.
@@ -98,25 +102,27 @@ app/src/main/java/com/hfspaces/explorer/
 ├── data/
 │   ├── remote/               HfHubClient (listing, search, metadata, likes, owner actions, logs), GradioClient (info, upload, queue calls), SpaceIds (id/host validation)
 │   ├── gradio/               schema models, InputKind mapping, payloads, queue protocol and diffs, chat shapes, SSE and output parsing (pure Kotlin, unit tested)
-│   ├── local/                Room database (v3) with migrations
+│   ├── local/                Room database (v4) with migrations
 │   ├── security/             Keystore token cipher
-│   └── repository/           Spaces, favourites, collections, presets, settings, tokens, media, TaskManager
+│   └── repository/           Spaces, favourites, collections, presets, settings, tokens, media, chats, backup, TaskManager
 ├── system/                   run service and notifications, deep links and share target, shortcuts and widget
-└── ui/                       Compose screens, one ViewModel per screen
+└── ui/                       Compose screens, one ViewModel per screen; `markdown/` holds the Markdown reader (pure Kotlin) and its renderer
 ```
 
 Security notes:
 
 - Space ids and hosts are validated before use. Only `https://<label>.hf.space` hosts are called, so a malicious listing can't redirect requests (or your token) elsewhere.
 - Endpoint names are validated, and errors reported by a Space are shown as-is rather than hidden behind silent fallbacks.
-- Backups are disabled, because Keystore-encrypted tokens can't be restored onto another device.
+- System backups are disabled, because Keystore-encrypted tokens can't be restored onto another device. The app's own backup file leaves tokens out, and an imported file is treated as untrusted: it can't say where a Space is hosted or name files to upload.
+- Text a Space returns is rendered as Markdown without HTML, and only `http(s)` links in it can be opened. Web pages open in a Custom Tab, never in a WebView inside the app.
 
 ## Privacy
 
 - The app has no analytics, ads or tracking, and no server of its own. It talks to Hugging Face and to the Spaces you open.
 - Hugging Face access tokens are encrypted on the device and only sent to `huggingface.co` and `*.hf.space`.
+- A run sends the selected token to the Space it runs, which is how private, gated and ZeroGPU Spaces know who you are, and the Space's own code can see it, as with the official Gradio clients. The runner shows which token is in use; choose "None" for Spaces you don't trust, and prefer a read-only token.
 - What you type or upload when you run a Space goes to that Space. Spaces are run by third parties on Hugging Face, so treat inputs as you would on the Space's web page.
-- Favourites, run history and saved outputs stay on your device.
+- Favourites, run history, chats and saved outputs stay on your device.
 
 ## License
 

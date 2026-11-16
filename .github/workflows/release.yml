@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v2.2.0 to build the release APK and publish it as a GitHub Release.
+# Push a tag like v2.3.0 to build the release APK and publish it as a GitHub Release.
 # Signing uses four repository secrets (see README, "Releasing"). Without them the APK is unsigned.
 on:
   push:

@@ -1,7 +1,6 @@
 package com.hfspaces.explorer
 
 import android.content.Context
-import androidx.core.net.toUri
 import com.hfspaces.explorer.data.local.AppDatabase
 import com.hfspaces.explorer.data.model.HfSpace
 import com.hfspaces.explorer.data.remote.GradioClient
@@ -41,7 +40,6 @@ import kotlinx.coroutines.launch
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.File
-import java.io.FileNotFoundException
 
 /**
  * Manual dependency graph, created once per process by [HfSpacesApplication].
@@ -86,7 +84,11 @@ class AppContainer(
     )
     val mediaExporter = MediaExporter(appContext, httpClient)
     val formDrafts = FormDraftStore()
-    val uploadStaging = UploadStaging(appContext.contentResolver, File(appContext.cacheDir, "uploads"))
+    val uploadStaging = UploadStaging(
+        resolver = appContext.contentResolver,
+        stagingDir = File(appContext.cacheDir, "uploads"),
+        ownAuthority = "${appContext.packageName}.files"
+    )
     val deepLinks = DeepLinks(applicationScope, uploadStaging)
 
     val chatRepository = ChatRepository(database.chatDao())
@@ -103,10 +105,8 @@ class AppContainer(
         gradio = gradioClient,
         mediaRepository = mediaRepository,
         taskDao = database.taskDao(),
-        contentOpener = ContentOpener { uri ->
-            appContext.contentResolver.openInputStream(uri.toUri())
-                ?: throw FileNotFoundException("Couldn't open $uri")
-        }
+        // Uploads read staged files only, whatever a stored run or preset says.
+        contentOpener = ContentOpener(uploadStaging::open)
     )
 
     val notifications = RunNotifications(appContext)

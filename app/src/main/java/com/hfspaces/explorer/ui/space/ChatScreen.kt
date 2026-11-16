@@ -108,7 +108,7 @@ data class ChatUiState(
      * True when the Space, not this app, keeps the conversation: there is no history input, so
      * what it remembers is whatever its session state holds.
      */
-    val spaceKeepsHistory: Boolean get() = shape?.historyIndex == null
+    val spaceKeepsHistory: Boolean get() = shape.let { it != null && it.historyIndex == null }
 }
 
 /** Conversation with a chat-style endpoint. The transcript is stored, so it survives restarts. */

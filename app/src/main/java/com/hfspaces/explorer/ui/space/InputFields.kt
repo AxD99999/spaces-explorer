@@ -251,7 +251,8 @@ private fun FileField(
         val path = capturePath
         capturePath = null
         if (path != null) {
-            if (ok && File(path).length() > 0) onPick(listOf(context.shareUriFor(path))) else File(path).delete()
+            // Already in the staging folder, so it is used as it is rather than copied again.
+            if (ok && File(path).length() > 0) onPick(listOf(Uri.fromFile(File(path)))) else File(path).delete()
         }
     }
     val photo = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture(), onCaptured)

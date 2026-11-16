@@ -158,7 +158,10 @@ class SpaceViewModel(
             taskManager.tasks
                 .map { list -> list.firstOrNull { it.space.id == spaceId }?.savedMediaIds.orEmpty() }
                 .distinctUntilChanged()
-                .collect { ids -> local.update { it.copy(savedOutputs = media.byIds(ids)) } }
+                .collect { ids ->
+                    val copies = media.byIds(ids)
+                    local.update { it.copy(savedOutputs = copies) }
+                }
         }
         if (!SpaceIds.isValidSpaceId(spaceId)) {
             local.update { it.copy(spaceError = "\"$spaceId\" is not a valid Space id", spec = SpecState.Failed("Invalid Space id")) }
@@ -231,7 +234,7 @@ class SpaceViewModel(
             messages.trySend("The Space no longer has ${task.endpoint}")
             return
         }
-        val restored = inputs.withoutMissingFiles { uri -> uri.startsWith("file:") && File(uri.toUri().path.orEmpty()).exists() }
+        val restored = inputs.withoutMissingFiles { uri -> uri.startsWith("file:") && staging.isStaged(File(uri.toUri().path.orEmpty())) }
             .filterKeys { it in endpoint.parameters.indices }
         drafts.put(spaceId, endpoint.name, restored)
         local.update { it.copy(selectedEndpoint = endpoint.name, formValues = formFor(spec, endpoint.name)) }
