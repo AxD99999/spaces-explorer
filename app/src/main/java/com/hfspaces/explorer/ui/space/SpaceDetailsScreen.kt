@@ -105,8 +105,8 @@ fun SpaceDetailsScreen(viewModel: SpaceViewModel, onBack: () -> Unit, onRun: (St
     ) { padding ->
         val space = state.space
         when {
-            space == null && state.spaceError != null -> FullScreenBox { ErrorState(state.spaceError!!, onRetry = viewModel::retry) }
-            space == null -> FullScreenBox { CircularProgressIndicator() }
+            space == null && state.spaceError != null -> FullScreenBox(Modifier.padding(padding)) { ErrorState(state.spaceError!!, onRetry = viewModel::retry) }
+            space == null -> FullScreenBox(Modifier.padding(padding)) { CircularProgressIndicator() }
             else -> Column(
                 Modifier
                     .fillMaxSize()

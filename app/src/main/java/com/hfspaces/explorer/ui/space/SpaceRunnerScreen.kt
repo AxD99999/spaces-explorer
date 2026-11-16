@@ -155,14 +155,14 @@ fun SpaceRunnerScreen(
     ) { padding ->
         val spec = state.spec
         when {
-            state.space == null && state.spaceError != null -> FullScreenBox { ErrorState(state.spaceError!!, onRetry = viewModel::retry) }
-            spec is SpecState.Failed -> FullScreenBox {
+            state.space == null && state.spaceError != null -> FullScreenBox(Modifier.padding(padding)) { ErrorState(state.spaceError!!, onRetry = viewModel::retry) }
+            spec is SpecState.Failed -> FullScreenBox(Modifier.padding(padding)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
                     if (state.canWake || state.wake !is WakeState.Idle) WakeCard(state.wake, onWake = viewModel::wake)
                     ErrorState(spec.message, onRetry = viewModel::retry)
                 }
             }
-            spec is SpecState.Loading -> FullScreenBox {
+            spec is SpecState.Loading -> FullScreenBox(Modifier.padding(padding)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     CircularProgressIndicator()
                     Text("Connecting to the Space…", style = MaterialTheme.typography.bodyMedium)

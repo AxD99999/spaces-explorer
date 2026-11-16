@@ -1,5 +1,6 @@
 package com.hfspaces.explorer.data.gradio
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.KSerializer
@@ -22,6 +23,7 @@ import okhttp3.HttpUrl
  * `{"key": "chat_interface.chatbot", "_type": "translation_metadata"}`. Objects become their
  * `key` (or null) instead of failing the whole API description.
  */
+@OptIn(ExperimentalSerializationApi::class)
 object LenientStringSerializer : KSerializer<String?> {
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("LenientString", PrimitiveKind.STRING).nullable
 

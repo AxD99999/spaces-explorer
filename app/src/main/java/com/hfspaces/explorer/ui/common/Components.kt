@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.core.net.toUri
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -357,14 +358,14 @@ fun CodeBlock(code: String, modifier: Modifier = Modifier, onCopied: (() -> Unit
 }
 
 @Composable
-fun FullScreenBox(content: @Composable () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+fun FullScreenBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
 }
 
 /** Opens a URL without crashing when no app can handle it. */
 fun Context.openUrl(url: String) {
     try {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (e: ActivityNotFoundException) {
         Toast.makeText(this, "No app can open this link", Toast.LENGTH_SHORT).show()
     }

@@ -1,6 +1,6 @@
 package com.hfspaces.explorer.ui.common
 
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -114,7 +114,7 @@ fun OutputList(items: List<OutputItem>, onCopied: () -> Unit) {
                         Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, contentDescription = null)
                         Spacer(Modifier.width(10.dp))
                         Text(item.fileName ?: url.substringAfterLast('/'), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { context.openFile(Uri.parse(url), item.mimeType) }) {
+                        TextButton(onClick = { context.openFile(url.toUri(), item.mimeType) }) {
                             Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
                             Spacer(Modifier.width(4.dp))
                             Text("Open")

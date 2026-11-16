@@ -1,7 +1,6 @@
 package com.hfspaces.explorer.ui.library
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +42,7 @@ import com.hfspaces.explorer.data.repository.SettingsRepository
 import com.hfspaces.explorer.data.repository.ThemeMode
 import com.hfspaces.explorer.ui.LocalSnackbarHostState
 import com.hfspaces.explorer.ui.common.SectionCard
+import com.hfspaces.explorer.ui.common.openUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -161,7 +161,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 OutlinedButton(onClick = {
-                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL))) }
+                    context.openUrl(SOURCE_URL)
                 }) { Text("Source code") }
             }
         }

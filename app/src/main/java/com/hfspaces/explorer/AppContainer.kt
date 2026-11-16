@@ -1,7 +1,7 @@
 package com.hfspaces.explorer
 
 import android.content.Context
-import android.net.Uri
+import androidx.core.net.toUri
 import com.hfspaces.explorer.data.gradio.ChatMessage
 import com.hfspaces.explorer.data.local.AppDatabase
 import com.hfspaces.explorer.data.model.HfSpace
@@ -98,7 +98,7 @@ class AppContainer(
         mediaRepository = mediaRepository,
         taskDao = database.taskDao(),
         contentOpener = ContentOpener { uri ->
-            appContext.contentResolver.openInputStream(Uri.parse(uri))
+            appContext.contentResolver.openInputStream(uri.toUri())
                 ?: throw FileNotFoundException("Couldn't open $uri")
         }
     )

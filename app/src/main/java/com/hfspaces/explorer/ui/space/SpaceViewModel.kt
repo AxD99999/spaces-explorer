@@ -1,6 +1,7 @@
 package com.hfspaces.explorer.ui.space
 
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -213,7 +214,7 @@ class SpaceViewModel(
             messages.trySend("The Space no longer has ${task.endpoint}")
             return
         }
-        val restored = inputs.withoutMissingFiles { uri -> uri.startsWith("file:") && File(Uri.parse(uri).path.orEmpty()).exists() }
+        val restored = inputs.withoutMissingFiles { uri -> uri.startsWith("file:") && File(uri.toUri().path.orEmpty()).exists() }
             .filterKeys { it in endpoint.parameters.indices }
         drafts.put(spaceId, endpoint.name, restored)
         local.update { it.copy(selectedEndpoint = endpoint.name, formValues = formFor(spec, endpoint.name)) }

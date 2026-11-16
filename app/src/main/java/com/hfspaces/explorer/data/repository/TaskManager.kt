@@ -163,6 +163,7 @@ class TaskManager(
         _tasks.value.firstOrNull { it.id == taskId }?.let { done ->
             persist(done)
             taskDao.trim(HISTORY_LIMIT)
+            _tasks.update { list -> list.filterIndexed { index, task -> index < HISTORY_LIMIT || task.isActive } }
             _finished.tryEmit(done)
         }
     }

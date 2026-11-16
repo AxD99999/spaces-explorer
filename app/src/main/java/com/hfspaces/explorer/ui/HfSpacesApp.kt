@@ -109,9 +109,10 @@ fun HfSpacesApp() {
     // Runs finish in the background; tell the user wherever they are.
     LaunchedEffect(Unit) {
         shell.finishedTasks.collect { task ->
+            // The runner of that Space and Compare already show the result.
             val viewingIt = navController.currentBackStackEntry?.let { entry ->
-                entry.destination.route == Routes.RUNNER &&
-                    entry.arguments?.getString(SpaceViewModel.ARG_SPACE_ID) == task.space.id
+                entry.destination.route == Routes.COMPARE ||
+                    (entry.destination.route == Routes.RUNNER && entry.arguments?.getString(SpaceViewModel.ARG_SPACE_ID) == task.space.id)
             } == true
             if (viewingIt || task.status == TaskStatus.CANCELLED) return@collect
             val message = when (task.status) {

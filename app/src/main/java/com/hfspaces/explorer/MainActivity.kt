@@ -18,8 +18,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        // Only fresh launches carry a request; a recreated activity already handled its intent.
-        if (savedInstanceState == null) container.deepLinks.handle(intent)
+        // Only fresh launches carry a request: a recreated activity already handled its intent, and
+        // reopening the task from Recents redelivers the old one (which would repeat a share).
+        val fromRecents = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        if (savedInstanceState == null && !fromRecents) container.deepLinks.handle(intent)
         setContent {
             val settings by container.settingsRepository.settings.collectAsStateWithLifecycle()
             val dark = when (settings.themeMode) {

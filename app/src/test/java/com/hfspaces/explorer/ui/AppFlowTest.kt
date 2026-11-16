@@ -7,7 +7,10 @@ import org.robolectric.Shadows.shadowOf
 import java.time.Duration
 import android.graphics.Canvas
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -126,6 +129,22 @@ class AppFlowTest {
         screenshot("10-share-target")
         compose.onNodeWithText("gradio/hello_world").performClick()
         compose.waitUntilAtLeastOneExists(hasSetTextAction() and hasText("Shared name"), timeout)
+    }
+
+    @Test
+    fun `coming back from a space keeps your place in the list`() {
+        compose.waitUntilAtLeastOneExists(hasText("Hello World"), timeout)
+        compose.onNode(hasSetTextAction() and hasText("Search Spaces")).performTextInput("many")
+        compose.runOnUiThread { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500)) }
+        compose.waitUntilAtLeastOneExists(hasText("Many 01"), timeout)
+
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Many 25"))
+        compose.onNodeWithText("Many 25").assertIsDisplayed().performClick()
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Open on Hugging Face"), timeout)
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Open menu"), timeout)
+        compose.waitForIdle()
+        compose.onNodeWithText("Many 25").assertIsDisplayed()
     }
 
     @Test

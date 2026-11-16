@@ -113,8 +113,15 @@ fun BrowseScreen(
     LaunchedEffect(gridState) {
         snapshotFlow { nearEnd }.distinctUntilChanged().filter { it }.collect { viewModel.loadMore() }
     }
-    LaunchedEffect(state.filter.category, state.filter.search.trim(), state.filter.sortBy) {
-        gridState.scrollToItem(0)
+    // A new query starts from the top. The last one is remembered, so that coming back from a
+    // Space (which restarts this effect) keeps your place in the list.
+    val query = "${state.filter.category}\u0000${state.filter.search.trim()}\u0000${state.filter.sortBy}"
+    var shownQuery by rememberSaveable { mutableStateOf(query) }
+    LaunchedEffect(query) {
+        if (shownQuery != query) {
+            shownQuery = query
+            gridState.scrollToItem(0)
+        }
     }
 
     Scaffold(

@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.hfspaces.explorer.data.model.GeneratedMediaItem
@@ -239,7 +240,7 @@ private fun MediaDetailSheet(item: GeneratedMediaItem, viewModel: MediaViewModel
                 OutlinedButton(onClick = { context.shareContent(localUri, item.textContent ?: item.url, item.mimeType) }) { Text("Share") }
                 if (localUri != null || item.url != null) {
                     OutlinedButton(onClick = {
-                        context.openFile(localUri ?: android.net.Uri.parse(item.url), item.mimeType)
+                        (localUri ?: item.url?.toUri())?.let { context.openFile(it, item.mimeType) }
                     }) { Text("Open") }
                 }
                 OutlinedButton(onClick = onOpenSpace) { Text("Run again") }

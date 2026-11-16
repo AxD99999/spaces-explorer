@@ -48,6 +48,13 @@ object FakeHub {
     private fun route(request: RecordedRequest): MockResponse {
         val path = request.path.orEmpty()
         return when {
+            // A long page, for tests that need a list worth scrolling.
+            path.startsWith("/spaces-json") && path.contains("search=many") -> json(
+                (1..30).joinToString(",", prefix = """{"spaces":[""", postfix = """],"numItemsPerPage":100}""") { n ->
+                    val label = n.toString().padStart(2, '0')
+                    """{"id":"many/space-$label","title":"Many $label","sdk":"gradio","likes":$n,"runtime":{"stage":"RUNNING"}}"""
+                }
+            )
             path.startsWith("/spaces-json") ->
                 if (path.contains("p=0")) json(Fixtures.read("spaces_page.json")) else MockResponse().setResponseCode(400)
             path.startsWith("/api/spaces/semantic-search") -> json("[]")
