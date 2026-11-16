@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hfspaces.explorer.data.gradio.ChatShape
 import com.hfspaces.explorer.data.gradio.FormValue
+import com.hfspaces.explorer.data.gradio.exampleValue
 import com.hfspaces.explorer.data.gradio.InputKind
 import com.hfspaces.explorer.data.gradio.chatShape
 import com.hfspaces.explorer.data.gradio.withoutMissingFiles
@@ -25,6 +26,7 @@ import com.hfspaces.explorer.data.gradio.UploadedFile
 import com.hfspaces.explorer.data.gradio.buildPayload
 import com.hfspaces.explorer.data.gradio.initialFormValue
 import com.hfspaces.explorer.data.gradio.inputKind
+import com.hfspaces.explorer.data.model.GeneratedMediaItem
 import com.hfspaces.explorer.data.model.HfSpace
 import com.hfspaces.explorer.data.model.mergedOver
 import com.hfspaces.explorer.data.model.SpaceTask
@@ -33,6 +35,7 @@ import com.hfspaces.explorer.data.remote.SpaceIds
 import com.hfspaces.explorer.data.repository.ApiKeysRepository
 import com.hfspaces.explorer.data.repository.FavoritesRepository
 import com.hfspaces.explorer.data.repository.FormDraftStore
+import com.hfspaces.explorer.data.repository.MediaRepository
 import com.hfspaces.explorer.data.repository.SpacesRepository
 import com.hfspaces.explorer.data.repository.TaskManager
 import com.hfspaces.explorer.data.repository.UploadStaging
@@ -45,6 +48,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -80,8 +84,13 @@ data class SpaceUiState(
     val inputError: String? = null,
     val task: SpaceTask? = null,
     val presets: List<InputPreset> = emptyList(),
-    val wake: WakeState = WakeState.Idle
+    val wake: WakeState = WakeState.Idle,
+    /** Saved copies of [task]'s outputs, in output order; preferred over the Space's short-lived links. */
+    val savedOutputs: List<GeneratedMediaItem> = emptyList()
 ) {
+    /** True when the Space suggests a sample value for at least one input. */
+    val hasExamples: Boolean get() = endpoint?.parameters.orEmpty().any { it.exampleValue() != null }
+
     /** Non-null when the selected endpoint can be used as a chat. */
     val chatShape: ChatShape? get() = endpoint?.chatShape()
     val canWake: Boolean get() = space?.stage == SpaceStage.SLEEPING || space?.stage == SpaceStage.BUILDING
@@ -101,7 +110,8 @@ class SpaceViewModel(
     private val drafts: FormDraftStore,
     private val staging: UploadStaging,
     private val presets: PresetsRepository,
-    private val deepLinks: DeepLinks
+    private val deepLinks: DeepLinks,
+    private val media: MediaRepository
 ) : ViewModel() {
     val spaceId: String = checkNotNull(savedStateHandle.get<String>(ARG_SPACE_ID)) { "Missing space id" }
 
@@ -143,6 +153,13 @@ class SpaceViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), local.value)
 
     init {
+        // Once a run's outputs are saved, show the copies: the Space deletes its own files after a while.
+        viewModelScope.launch {
+            taskManager.tasks
+                .map { list -> list.firstOrNull { it.space.id == spaceId }?.savedMediaIds.orEmpty() }
+                .distinctUntilChanged()
+                .collect { ids -> local.update { it.copy(savedOutputs = media.byIds(ids)) } }
+        }
         if (!SpaceIds.isValidSpaceId(spaceId)) {
             local.update { it.copy(spaceError = "\"$spaceId\" is not a valid Space id", spec = SpecState.Failed("Invalid Space id")) }
         } else {
@@ -331,6 +348,18 @@ class SpaceViewModel(
     fun updateValue(index: Int, value: FormValue) {
         local.update { state ->
             val values = state.formValues + (index to value)
+            state.selectedEndpoint?.let { drafts.put(spaceId, it, values) }
+            state.copy(formValues = values, inputError = null)
+        }
+    }
+
+    /** Fills every input the Space gives a sample value for; files are left alone. */
+    fun fillExamples() {
+        val endpoint = local.value.endpoint ?: return
+        val examples = endpoint.parameters.mapIndexedNotNull { index, param -> param.exampleValue()?.let { index to it } }
+        if (examples.isEmpty()) return
+        local.update { state ->
+            val values = state.formValues + examples
             state.selectedEndpoint?.let { drafts.put(spaceId, it, values) }
             state.copy(formValues = values, inputError = null)
         }

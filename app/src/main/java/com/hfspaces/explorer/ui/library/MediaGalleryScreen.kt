@@ -27,6 +27,8 @@ import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -37,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
@@ -91,7 +94,11 @@ fun MediaGalleryScreen(viewModel: MediaViewModel, onBack: () -> Unit, onOpenSpac
     var filter by rememberSaveable { mutableStateOf(MediaFilter.ALL) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmClear by rememberSaveable { mutableStateOf(false) }
-    val visible = items.filter { filter.types == null || it.type in filter.types!! }
+    var query by rememberSaveable { mutableStateOf("") }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    val visible = remember(items, filter, query) {
+        items.filter { item -> (filter.types == null || item.type in filter.types!!) && item.matches(query) }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(LocalSnackbarHostState.current) },
@@ -100,12 +107,29 @@ fun MediaGalleryScreen(viewModel: MediaViewModel, onBack: () -> Unit, onOpenSpac
                 title = { Text("Saved outputs") },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") } },
                 actions = {
-                    if (items.isNotEmpty()) IconButton(onClick = { confirmClear = true }) { Icon(Icons.Outlined.DeleteSweep, contentDescription = "Delete all outputs") }
+                    if (items.isNotEmpty()) {
+                        IconButton(onClick = {
+                            searching = !searching
+                            if (!searching) query = ""
+                        }) { Icon(if (searching) Icons.Outlined.SearchOff else Icons.Outlined.Search, contentDescription = if (searching) "Close search" else "Search outputs") }
+                        IconButton(onClick = { confirmClear = true }) { Icon(Icons.Outlined.DeleteSweep, contentDescription = "Delete all outputs") }
+                    }
                 }
             )
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            if (searching) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Prompt, Space or text") },
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -117,11 +141,15 @@ fun MediaGalleryScreen(viewModel: MediaViewModel, onBack: () -> Unit, onOpenSpac
             }
             if (visible.isEmpty()) {
                 CenteredBox {
-                    MessageState(
-                        icon = Icons.Outlined.PhotoLibrary,
-                        title = "Nothing saved yet",
-                        message = "Outputs from your runs are saved here automatically, including a copy of each file."
-                    )
+                    if (items.isEmpty()) {
+                        MessageState(
+                            icon = Icons.Outlined.PhotoLibrary,
+                            title = "Nothing saved yet",
+                            message = "Outputs from your runs are saved here automatically, including a copy of each file."
+                        )
+                    } else {
+                        MessageState(icon = Icons.Outlined.SearchOff, title = "Nothing matches", message = "Try another search or filter.")
+                    }
                 }
             } else {
                 LazyVerticalGrid(
@@ -169,6 +197,12 @@ fun MediaGalleryScreen(viewModel: MediaViewModel, onBack: () -> Unit, onOpenSpac
             dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
         )
     }
+}
+
+/** Case-insensitive match on what the user would remember an output by. */
+private fun GeneratedMediaItem.matches(query: String): Boolean {
+    val q = query.trim()
+    return q.isEmpty() || listOfNotNull(title, prompt, spaceTitle, spaceId, textContent?.take(2000)).any { it.contains(q, ignoreCase = true) }
 }
 
 @Composable

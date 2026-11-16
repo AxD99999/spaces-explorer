@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -151,6 +152,24 @@ class GradioSchemaTest {
     fun `prompt detection picks the first non-empty text input`() {
         val endpoint = Fixtures.endpoints("info_hello-world.json").single()
         assertEquals("Ada", detectPrompt(endpoint, mapOf(0 to FormValue.Text("  Ada "))))
+    }
+
+    @Test
+    fun `example values fill every kind of input except files`() {
+        val calculator = Fixtures.endpoints("info_calculator.json").single()
+        assertEquals(
+            listOf(FormValue.Text("3"), FormValue.Text("add"), FormValue.Text("3")),
+            calculator.parameters.map { it.exampleValue() }
+        )
+        assertEquals(FormValue.Bool(true), param("""{"component":"Checkbox","type":{"type":"boolean"},"example_input":true}""").exampleValue())
+        assertEquals(
+            FormValue.Multi(listOf("a", "b")),
+            param("""{"component":"CheckboxGroup","type":{"type":"array","items":{"enum":["a","b","c"]}},"example_input":["a","b"]}""").exampleValue()
+        )
+        // A file's example is a link to a sample on the Space, not something to upload.
+        assertNull(param("""{"component":"Image","example_input":{"path":"https://x/y.png","meta":{"_type":"gradio.FileData"}}}""").exampleValue())
+        assertNull(param("""{"component":"Textbox","type":{"type":"string"}}""").exampleValue())
+        assertNull(param("""{"component":"Textbox","type":{"type":"string"},"example_input":null}""").exampleValue())
     }
 
     @Test

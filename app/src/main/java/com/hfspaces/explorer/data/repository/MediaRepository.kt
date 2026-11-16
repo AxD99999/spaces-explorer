@@ -75,6 +75,19 @@ class MediaRepository(
 
     suspend fun latest(): GeneratedMediaItem? = dao.latest()?.toModel()
 
+    /** The saved items for [ids], in that order; ids that are gone are left out. */
+    suspend fun byIds(ids: List<String>): List<GeneratedMediaItem> {
+        if (ids.isEmpty()) return emptyList()
+        val rows = dao.getAll(ids).associateBy { it.id }
+        return ids.mapNotNull { rows[it]?.toModel() }
+    }
+
+    /** How many files are kept for saved outputs, and their total size in bytes. */
+    suspend fun diskUsage(): Pair<Int, Long> = withContext(Dispatchers.IO) {
+        val files = mediaDir.listFiles()?.filter { it.isFile }.orEmpty()
+        files.size to files.sumOf { it.length() }
+    }
+
     suspend fun get(id: String): GeneratedMediaItem? = dao.get(id)?.toModel()
 
     /** Local copy of the first image among [ids], for notification thumbnails. */

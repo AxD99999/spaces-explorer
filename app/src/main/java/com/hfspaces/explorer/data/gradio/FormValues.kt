@@ -73,6 +73,20 @@ fun initialFormValue(param: GradioParameter, kind: InputKind): FormValue {
 }
 
 /**
+ * The Space's sample value for this input as a form value, or null when it gives none (or the
+ * input is a file, whose sample is a link rather than something to send).
+ */
+fun GradioParameter.exampleValue(): FormValue? {
+    val sample = example ?: return null
+    return when (inputKind()) {
+        is InputKind.File -> null
+        is InputKind.Checkbox -> (sample as? JsonPrimitive)?.booleanOrNull?.let(FormValue::Bool)
+        is InputKind.MultiChoice -> (sample as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }?.let(FormValue::Multi)
+        else -> sample.asInputText().takeIf { it.isNotEmpty() }?.let(FormValue::Text)
+    }
+}
+
+/**
  * Converts form state into Gradio's positional `data` array.
  *
  * @param uploads server paths for files picked in [values], keyed by content URI.

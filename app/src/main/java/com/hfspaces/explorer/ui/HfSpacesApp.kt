@@ -284,7 +284,8 @@ private fun AppNavHost(navController: NavHostController, runningCount: Int, onOp
                     if (!navController.popBackStack(Routes.DETAILS, inclusive = false)) navController.navigate(Routes.details(id))
                 },
                 onManageKeys = openKeys,
-                onOpenChat = { id -> navController.navigate(Routes.chat(id)) }
+                onOpenChat = { id -> navController.navigate(Routes.chat(id)) },
+                onOpenViewer = { mediaId -> navController.navigate(Routes.viewer(mediaId)) }
             )
         }
         composable(Routes.CHAT, arguments = listOf(spaceArg)) {

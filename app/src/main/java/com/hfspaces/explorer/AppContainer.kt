@@ -9,6 +9,7 @@ import com.hfspaces.explorer.data.remote.HfHubClient
 import com.hfspaces.explorer.data.remote.SpaceIds
 import com.hfspaces.explorer.data.remote.defaultOkHttpClient
 import com.hfspaces.explorer.data.repository.ApiKeysRepository
+import com.hfspaces.explorer.data.repository.BackupManager
 import com.hfspaces.explorer.data.repository.ChatRepository
 import com.hfspaces.explorer.data.repository.CollectionsRepository
 import com.hfspaces.explorer.data.repository.ContentOpener
@@ -89,6 +90,13 @@ class AppContainer(
     val deepLinks = DeepLinks(applicationScope, uploadStaging)
 
     val chatRepository = ChatRepository(database.chatDao())
+    val backupManager = BackupManager(
+        favorites = database.favoritesDao(),
+        collections = database.collectionDao(),
+        presets = database.presetDao(),
+        settings = settingsRepository,
+        resolver = appContext.contentResolver
+    )
 
     val taskManager = TaskManager(
         scope = applicationScope,

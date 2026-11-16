@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Info
@@ -81,7 +82,8 @@ fun SpaceRunnerScreen(
     onBack: () -> Unit,
     onOpenDetails: (String) -> Unit,
     onManageKeys: () -> Unit,
-    onOpenChat: (String) -> Unit
+    onOpenChat: (String) -> Unit,
+    onOpenViewer: (String) -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showPresets by rememberSaveable { mutableStateOf(false) }
@@ -207,6 +209,13 @@ fun SpaceRunnerScreen(
                     SectionCard(
                         title = "Inputs",
                         action = {
+                            if (state.hasExamples) {
+                                TextButton(onClick = viewModel::fillExamples, enabled = !state.isRunning) {
+                                    Icon(Icons.Outlined.AutoFixHigh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Example")
+                                }
+                            }
                             TextButton(onClick = viewModel::resetForm, enabled = !state.isRunning) {
                                 Icon(Icons.Outlined.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
@@ -244,7 +253,12 @@ fun SpaceRunnerScreen(
                         }
                         SectionCard(if (task.isActive) "Output so far" else "Output") {
                             if (outputs.isEmpty()) Text("The Space returned no output.", style = MaterialTheme.typography.bodyMedium)
-                            OutputList(outputs, onCopied = { scope.launch { snackbar.showSnackbar("Copied") } })
+                            OutputList(
+                                items = outputs,
+                                onCopied = { scope.launch { snackbar.showSnackbar("Copied") } },
+                                saved = state.savedOutputs.takeIf { !task.isActive }.orEmpty(),
+                                onOpenSaved = onOpenViewer
+                            )
                             if (task.savedMediaIds.isNotEmpty()) {
                                 Text(
                                     "Saved to your outputs library",
@@ -304,13 +318,16 @@ private fun TokenSelector(state: SpaceUiState, onSelect: (String?) -> Unit, onMa
             }
         }
     }
-    if (state.apiKeys.isEmpty()) {
-        Text(
-            "Some Spaces (private, gated or ZeroGPU) need a Hugging Face token.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
+    Text(
+        when {
+            state.apiKeys.isEmpty() -> "Some Spaces (private, gated or ZeroGPU) need a Hugging Face token."
+            // The Space's own code receives the token, like with the official clients.
+            state.selectedKey != null -> "Sent to this Space with each run. Choose None for Spaces you don't trust."
+            else -> "Running without a token."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable

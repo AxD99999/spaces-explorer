@@ -1,6 +1,9 @@
 package com.hfspaces.explorer.data.model
 
+import com.hfspaces.explorer.data.gradio.OutputItem
 import com.hfspaces.explorer.system.pickShortcutSpaces
+import com.hfspaces.explorer.ui.common.compactCount
+import com.hfspaces.explorer.ui.common.savedCopies
 import com.hfspaces.explorer.ui.library.FavouriteSort
 import com.hfspaces.explorer.ui.library.arrangeFavourites
 import com.hfspaces.explorer.ui.space.SpaceViewModel
@@ -46,5 +49,29 @@ class HelpersTest {
         assertFalse(a.isAdult)
         assertEquals(listOf(a), listOf(a, adult).hidingAdult(show = false))
         assertEquals(listOf(a, adult), listOf(a, adult).hidingAdult(show = true))
+    }
+
+    @Test
+    fun `outputs use their saved copies when those belong to the same run`() {
+        fun output(type: GeneratedMediaType) = OutputItem(type, url = "https://x.hf.space/file=a")
+        fun saved(id: String, type: GeneratedMediaType, path: String?) =
+            GeneratedMediaItem(id = id, type = type, localPath = path, title = "t", spaceId = "x/a", spaceTitle = "A", createdAt = "now")
+        val outputs = listOf(output(GeneratedMediaType.IMAGE), output(GeneratedMediaType.AUDIO), output(GeneratedMediaType.TEXT))
+        val copies = listOf(
+            saved("m1", GeneratedMediaType.IMAGE, "/data/m1.png"),
+            saved("m2", GeneratedMediaType.AUDIO, null),
+            saved("m3", GeneratedMediaType.TEXT, null)
+        )
+        // The image has a file; the audio download failed, so its link stays; text has no file at all.
+        assertEquals(listOf("m1", null, null), savedCopies(outputs, copies).map { it?.id })
+        // Before the run is saved, or with another run's copies, nothing is substituted.
+        assertEquals(listOf(null, null, null), savedCopies(outputs, emptyList()).map { it?.id })
+        assertEquals(listOf(null, null, null), savedCopies(outputs, copies.take(2)).map { it?.id })
+        assertEquals(listOf<String?>(null), savedCopies(listOf(output(GeneratedMediaType.VIDEO)), listOf(saved("m1", GeneratedMediaType.IMAGE, "/p"))).map { it?.id })
+    }
+
+    @Test
+    fun `counts are shortened`() {
+        assertEquals(listOf("0", "999", "1k", "1.2k", "12.3k", "999k", "1M", "2.5M"), listOf(0, 999, 1000, 1234, 12_345, 999_999, 1_000_000, 2_500_000).map(::compactCount))
     }
 }

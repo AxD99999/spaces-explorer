@@ -1,6 +1,8 @@
 package com.hfspaces.explorer.ui.space
 
+import android.content.ActivityNotFoundException
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -22,6 +24,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -41,11 +45,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +65,8 @@ import com.hfspaces.explorer.data.gradio.InputKind
 import com.hfspaces.explorer.data.gradio.PickedFile
 import com.hfspaces.explorer.data.gradio.asInputText
 import com.hfspaces.explorer.data.gradio.formatNumber
+import com.hfspaces.explorer.data.repository.shareUriFor
+import java.io.File
 import kotlin.math.roundToInt
 
 @Composable
@@ -234,6 +242,36 @@ private fun FileField(
 ) {
     val single = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let { onPick(listOf(it)) } }
     val multiple = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> onPick(uris) }
+
+    // Camera: the camera app writes into our cache through the FileProvider, then the result is
+    // picked up like any other file. No camera permission is involved.
+    val context = LocalContext.current
+    var capturePath by rememberSaveable { mutableStateOf<String?>(null) }
+    val onCaptured: (Boolean) -> Unit = { ok ->
+        val path = capturePath
+        capturePath = null
+        if (path != null) {
+            if (ok && File(path).length() > 0) onPick(listOf(context.shareUriFor(path))) else File(path).delete()
+        }
+    }
+    val photo = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture(), onCaptured)
+    val video = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo(), onCaptured)
+    val capture: (() -> Unit)? = when {
+        kind.mimeType.startsWith("image") || kind.mimeType.startsWith("video") -> {
+            {
+                val isVideo = kind.mimeType.startsWith("video")
+                val file = File(File(context.cacheDir, "uploads").apply { mkdirs() }, "capture_${System.currentTimeMillis()}.${if (isVideo) "mp4" else "jpg"}")
+                capturePath = file.path
+                try {
+                    (if (isVideo) video else photo).launch(context.shareUriFor(file.path))
+                } catch (e: ActivityNotFoundException) {
+                    capturePath = null
+                    Toast.makeText(context, "No camera app found", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        else -> null
+    }
     val (icon, noun) = when {
         kind.mimeType.startsWith("image") -> Icons.Outlined.Image to if (kind.multiple) "images" else "an image"
         kind.mimeType.startsWith("audio") -> Icons.Outlined.AudioFile to "audio"
@@ -268,17 +306,30 @@ private fun FileField(
             IconButton(onClick = { onRemove(file) }, enabled = enabled) { Icon(Icons.Filled.Close, contentDescription = "Remove ${file.name}") }
         }
     }
-    if (kind.multiple || files.isEmpty()) {
-        OutlinedButton(
-            onClick = { if (kind.multiple) multiple.launch(kind.mimeType) else single.launch(kind.mimeType) },
-            enabled = enabled && !isStaging
-        ) {
-            if (isStaging) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(if (files.isEmpty()) "Choose $noun" else "Add more")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (kind.multiple || files.isEmpty()) {
+            OutlinedButton(
+                onClick = { if (kind.multiple) multiple.launch(kind.mimeType) else single.launch(kind.mimeType) },
+                enabled = enabled && !isStaging
+            ) {
+                if (isStaging) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (files.isEmpty()) "Choose $noun" else "Add more")
+            }
+        } else {
+            OutlinedButton(onClick = { single.launch(kind.mimeType) }, enabled = enabled && !isStaging) { Text("Replace") }
         }
-    } else {
-        OutlinedButton(onClick = { single.launch(kind.mimeType) }, enabled = enabled && !isStaging) { Text("Replace") }
+        if (capture != null) {
+            OutlinedButton(onClick = capture, enabled = enabled && !isStaging) {
+                Icon(
+                    if (kind.mimeType.startsWith("video")) Icons.Outlined.Videocam else Icons.Outlined.PhotoCamera,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(if (kind.mimeType.startsWith("video")) "Record" else "Camera")
+            }
+        }
     }
 }
 

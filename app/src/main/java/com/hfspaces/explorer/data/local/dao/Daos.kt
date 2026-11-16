@@ -116,6 +116,9 @@ interface PresetDao {
     @Query("SELECT * FROM presets WHERE spaceId = :spaceId ORDER BY createdAt DESC")
     fun observeForSpace(spaceId: String): Flow<List<PresetEntity>>
 
+    @Query("SELECT * FROM presets ORDER BY createdAt")
+    suspend fun getAll(): List<PresetEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(preset: PresetEntity)
 
@@ -140,6 +143,12 @@ interface CollectionDao {
 
     @Query("SELECT * FROM collection_spaces")
     fun observeMemberships(): Flow<List<CollectionSpaceEntity>>
+
+    @Query("SELECT * FROM collections ORDER BY createdAt")
+    suspend fun getAll(): List<CollectionEntity>
+
+    @Query("SELECT * FROM collection_spaces")
+    suspend fun getMemberships(): List<CollectionSpaceEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(collection: CollectionEntity)

@@ -40,7 +40,8 @@ val AppViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
             drafts = c.formDrafts,
             staging = c.uploadStaging,
             presets = c.presetsRepository,
-            deepLinks = c.deepLinks
+            deepLinks = c.deepLinks,
+            media = c.mediaRepository
         )
     }
     initializer {
@@ -61,5 +62,5 @@ val AppViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
     }
     initializer { container().run { MySpacesViewModel(hubClient, apiKeysRepository) } }
     initializer { container().run { ManageSpaceViewModel(createSavedStateHandle(), hubClient, apiKeysRepository) } }
-    initializer { container().run { SettingsViewModel(settingsRepository, recentSearches, cacheDir) } }
+    initializer { container().run { SettingsViewModel(settingsRepository, recentSearches, cacheDir, mediaRepository, chatRepository, backupManager) } }
 }

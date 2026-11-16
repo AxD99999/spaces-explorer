@@ -376,7 +376,7 @@ internal fun codeSnippets(spec: SpaceApiSpec, endpoint: SpaceEndpoint): Map<Stri
         if (p.inputKind() is InputKind.File) "{\"path\": \"<uploaded path>\", \"meta\": {\"_type\": \"gradio.FileData\"}}"
         else p.example?.toString() ?: "null"
     }
-    val curl = "EVENT_ID=$(curl -s -X POST $base/call/$api \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"data\": $data}' \\\n" +
+    val curl = published["bash"] ?: "EVENT_ID=$(curl -s -X POST $base/call/$api \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"data\": $data}' \\\n" +
         "  | sed -E 's/.*\"event_id\": ?\"([^\"]+)\".*/\\1/')\n\ncurl -N $base/call/$api/\$EVENT_ID"
     return linkedMapOf("Python" to python, "JavaScript" to js, "cURL" to curl)
 }

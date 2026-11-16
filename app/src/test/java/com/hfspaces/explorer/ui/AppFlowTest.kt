@@ -11,6 +11,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -228,6 +229,30 @@ class AppFlowTest {
     }
 
     @Test
+    fun `example fills the form and saved outputs can be searched`() {
+        compose.waitUntilAtLeastOneExists(hasText("Hello World"), timeout)
+        compose.onAllNodesWithText("Run")[0].performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Example"), timeout)
+        compose.onNodeWithText("Example").performClick()
+        compose.waitUntilAtLeastOneExists(hasSetTextAction() and hasText("Hello!!"), timeout)
+        compose.onNodeWithText("Run").performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Hello Hello!!!!"), timeout)
+        compose.waitUntilAtLeastOneExists(hasText("Saved to your outputs library"), timeout)
+
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Open menu"), timeout)
+        compose.onNodeWithContentDescription("Open menu").performClick()
+        compose.onNodeWithText("Saved outputs").performClick()
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Search outputs"), timeout)
+        compose.onNodeWithContentDescription("Search outputs").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("no such thing")
+        compose.waitUntilAtLeastOneExists(hasText("Nothing matches"), timeout)
+        compose.onNode(hasSetTextAction()).performTextReplacement("hello!!")
+        compose.waitUntilAtLeastOneExists(hasText("Hello!!"), timeout)
+        screenshot("18-saved-outputs-search")
+    }
+
+    @Test
     fun `new screens render`() {
         compose.waitUntilAtLeastOneExists(hasContentDescription("Open menu"), timeout)
         fun open(item: String) {
@@ -237,6 +262,11 @@ class AppFlowTest {
         open("Settings")
         compose.waitUntilAtLeastOneExists(hasText("Dynamic colour"), timeout)
         screenshot("11-settings")
+        compose.onNodeWithText("Link settings").assertExists()
+        compose.onNodeWithText("Import").assertExists()
+        compose.onNodeWithText("Chat history: 0 messages").assertExists()
+        compose.onNodeWithText("Clear cache").performScrollTo()
+        screenshot("11b-settings-backup-storage")
         compose.onNodeWithContentDescription("Back").performClick()
 
         open("Compare")

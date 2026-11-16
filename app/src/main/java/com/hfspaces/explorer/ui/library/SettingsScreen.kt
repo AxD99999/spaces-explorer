@@ -4,8 +4,11 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +19,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -25,9 +29,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,27 +44,110 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hfspaces.explorer.BuildConfig
 import com.hfspaces.explorer.data.repository.AppSettings
+import com.hfspaces.explorer.data.repository.BackupManager
+import com.hfspaces.explorer.data.repository.ChatRepository
+import com.hfspaces.explorer.data.repository.MediaRepository
 import com.hfspaces.explorer.data.repository.RecentSearches
 import com.hfspaces.explorer.data.repository.SettingsRepository
 import com.hfspaces.explorer.data.repository.ThemeMode
 import com.hfspaces.explorer.ui.LocalSnackbarHostState
 import com.hfspaces.explorer.ui.common.SectionCard
 import com.hfspaces.explorer.ui.common.openUrl
+import com.hfspaces.explorer.ui.common.userMessage
+import com.hfspaces.explorer.ui.space.formatBytes
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/** What the app keeps on the device besides the cache. */
+data class StorageInfo(val outputFiles: Int = 0, val outputBytes: Long = 0, val chatMessages: Int = 0)
+
 class SettingsViewModel(
     private val settings: SettingsRepository,
     private val recentSearches: RecentSearches,
-    private val cacheDir: File
+    private val cacheDir: File,
+    private val media: MediaRepository,
+    private val chats: ChatRepository,
+    private val backups: BackupManager
 ) : ViewModel() {
     val state: StateFlow<AppSettings> = settings.settings
+
+    private val _storage = MutableStateFlow(StorageInfo())
+    val storage: StateFlow<StorageInfo> = _storage.asStateFlow()
+
+    private val messages = Channel<String>(Channel.BUFFERED)
+
+    /** One-off messages for a snackbar. */
+    val events: Flow<String> = messages.receiveAsFlow()
+
+    init {
+        refreshStorage()
+    }
+
+    private fun refreshStorage() {
+        viewModelScope.launch {
+            val (files, bytes) = media.diskUsage()
+            _storage.value = StorageInfo(files, bytes, chats.messageCount())
+        }
+    }
+
+    fun clearChats() {
+        viewModelScope.launch {
+            chats.clearAll()
+            refreshStorage()
+            messages.trySend("Chat history deleted")
+        }
+    }
+
+    fun exportBackup(uri: Uri) {
+        viewModelScope.launch {
+            messages.trySend(
+                try {
+                    backups.exportTo(uri)
+                    "Backup saved"
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    "Couldn't save the backup: ${e.userMessage()}"
+                }
+            )
+        }
+    }
+
+    fun importBackup(uri: Uri) {
+        viewModelScope.launch {
+            messages.trySend(
+                try {
+                    val added = backups.importFrom(uri)
+                    if (added.isEmpty) {
+                        "Everything in that backup was already here"
+                    } else {
+                        "Added " + listOfNotNull(
+                            added.favourites.takeIf { it > 0 }?.let { "$it favourite${if (it == 1) "" else "s"}" },
+                            added.collections.takeIf { it > 0 }?.let { "$it collection${if (it == 1) "" else "s"}" },
+                            added.presets.takeIf { it > 0 }?.let { "$it preset${if (it == 1) "" else "s"}" }
+                        ).joinToString(", ")
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    "Couldn't import: ${e.userMessage()}"
+                }
+            )
+        }
+    }
 
     fun setTheme(mode: ThemeMode) = settings.setThemeMode(mode)
     fun setDynamicColor(enabled: Boolean) = settings.setDynamicColor(enabled)
@@ -74,9 +166,18 @@ class SettingsViewModel(
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val settings by viewModel.state.collectAsStateWithLifecycle()
+    val storage by viewModel.storage.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbar = LocalSnackbarHostState.current
     val scope = rememberCoroutineScope()
+    var confirmClearChats by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.showSnackbar(it) } }
+    val exportBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let(viewModel::exportBackup)
+    }
+    val importBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::importBackup)
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -160,9 +261,39 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 }) { Text("Link settings") }
             }
+            SectionCard("Backup") {
+                Text(
+                    "Android backups are off for this app, because tokens are tied to this device. Save your favourites, " +
+                        "collections, presets and settings to a file to move them to another phone.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "Tokens, runs, chats and saved outputs aren't included. Importing only adds; nothing here is replaced.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { runCatching { exportBackup.launch(BackupManager.suggestedFileName()) } }) { Text("Export") }
+                    // Some file managers don't label JSON files, so any file can be picked; the content is checked.
+                    OutlinedButton(onClick = { runCatching { importBackup.launch(arrayOf("application/json", "text/*", "application/octet-stream")) } }) { Text("Import") }
+                }
+            }
             SectionCard("Storage") {
-                Text("Cached lists and files staged for upload. Saved outputs and favourites aren't affected.", style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Saved outputs: ${storage.outputFiles} file${if (storage.outputFiles == 1) "" else "s"}, ${formatBytes(storage.outputBytes)}. " +
+                        "Delete them one by one or all at once under Saved outputs.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Chat history: ${storage.chatMessages} message${if (storage.chatMessages == 1) "" else "s"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (storage.chatMessages > 0) TextButton(onClick = { confirmClearChats = true }) { Text("Delete chats") }
+                }
+                Text("Cache: lists and files staged for upload. Clearing it doesn't touch saved outputs or favourites.", style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = {
                         scope.launch {
                             val freed = viewModel.clearCache()
@@ -188,6 +319,30 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             }
         }
     }
+
+    if (confirmClearChats) {
+        ConfirmDialog(
+            title = "Delete all chats?",
+            body = "This removes every saved conversation from this device.",
+            confirm = "Delete",
+            onConfirm = {
+                viewModel.clearChats()
+                confirmClearChats = false
+            },
+            onDismiss = { confirmClearChats = false }
+        )
+    }
+}
+
+@Composable
+private fun ConfirmDialog(title: String, body: String, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(body) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(confirm, color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 private const val SOURCE_URL = "https://github.com/AxD99999/spaces-explorer"

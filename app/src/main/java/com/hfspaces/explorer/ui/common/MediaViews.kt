@@ -1,6 +1,5 @@
 package com.hfspaces.explorer.ui.common
 
-import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,7 +40,9 @@ import androidx.media3.ui.PlayerView
 import coil.compose.SubcomposeAsyncImage
 import com.hfspaces.explorer.data.gradio.MARKDOWN_MIME
 import com.hfspaces.explorer.data.gradio.OutputItem
+import com.hfspaces.explorer.data.model.GeneratedMediaItem
 import com.hfspaces.explorer.data.model.GeneratedMediaType
+import com.hfspaces.explorer.data.repository.shareUriFor
 import com.hfspaces.explorer.data.remote.AppJson
 import com.hfspaces.explorer.ui.markdown.MarkdownText
 import kotlinx.serialization.json.Json
@@ -92,18 +93,36 @@ fun RemoteImage(source: String, description: String?, modifier: Modifier = Modif
     )
 }
 
+/**
+ * Shows a run's outputs.
+ *
+ * @param saved the copies kept in app storage, one per item and in the same order (empty until
+ * the run has finished). They are shown instead of the Space's links, which stop working once
+ * the Space clears its temporary files and need a token on private Spaces.
+ * @param onOpenSaved opens a saved image in the full-screen viewer, by media id.
+ */
 @Composable
-fun OutputList(items: List<OutputItem>, onCopied: () -> Unit) {
+fun OutputList(
+    items: List<OutputItem>,
+    onCopied: () -> Unit,
+    saved: List<GeneratedMediaItem> = emptyList(),
+    onOpenSaved: ((String) -> Unit)? = null
+) {
     val context = LocalContext.current
+    val copies = remember(items, saved) { savedCopies(items, saved) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items.forEach { item ->
+        items.forEachIndexed { index, item ->
+            val copy = copies[index]
+            val source = copy?.displaySource ?: item.url
             item.label?.let { Text(it, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold) }
             when (item.type) {
-                GeneratedMediaType.IMAGE -> item.url?.let { url ->
-                    RemoteImage(url, item.label ?: item.fileName) { context.openUrl(url) }
+                GeneratedMediaType.IMAGE -> source?.let { image ->
+                    RemoteImage(image, item.label ?: item.fileName) {
+                        if (copy != null && onOpenSaved != null) onOpenSaved(copy.id) else item.url?.let(context::openUrl)
+                    }
                 }
-                GeneratedMediaType.VIDEO -> item.url?.let { MediaPlayer(it, isVideo = true) }
-                GeneratedMediaType.AUDIO -> item.url?.let { MediaPlayer(it, isVideo = false) }
+                GeneratedMediaType.VIDEO -> source?.let { MediaPlayer(it, isVideo = true) }
+                GeneratedMediaType.AUDIO -> source?.let { MediaPlayer(it, isVideo = false) }
                 GeneratedMediaType.FILE -> item.url?.let { url ->
                     Row(
                         modifier = Modifier
@@ -116,7 +135,11 @@ fun OutputList(items: List<OutputItem>, onCopied: () -> Unit) {
                         Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, contentDescription = null)
                         Spacer(Modifier.width(10.dp))
                         Text(item.fileName ?: url.substringAfterLast('/'), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { context.openFile(url.toUri(), item.mimeType) }) {
+                        TextButton(onClick = {
+                            // A saved file is handed to other apps through the FileProvider, never as a file path.
+                            val path = copy?.localPath
+                            if (path != null) context.openFile(context.shareUriFor(path), item.mimeType ?: copy.mimeType) else context.openUrl(url)
+                        }) {
                             Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
                             Spacer(Modifier.width(4.dp))
                             Text("Open")
@@ -135,6 +158,16 @@ fun OutputList(items: List<OutputItem>, onCopied: () -> Unit) {
         }
     }
 }
+
+/**
+ * The saved copy to show for each output, or null where the Space's own link has to do. Copies
+ * line up with the outputs by position; when the counts differ they belong to a different run,
+ * and a copy without a file on disk is no better than the link.
+ */
+fun savedCopies(items: List<OutputItem>, saved: List<GeneratedMediaItem>): List<GeneratedMediaItem?> =
+    items.mapIndexed { index, item ->
+        saved.takeIf { it.size == items.size }?.get(index)?.takeIf { it.localPath != null && it.type == item.type }
+    }
 
 private val PrettyJson = Json { prettyPrint = true }
 
