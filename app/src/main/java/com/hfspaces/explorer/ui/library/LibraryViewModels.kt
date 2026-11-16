@@ -13,14 +13,11 @@ import com.hfspaces.explorer.data.repository.FavoritesRepository
 import com.hfspaces.explorer.data.repository.MediaExporter
 import com.hfspaces.explorer.data.repository.MediaRepository
 import com.hfspaces.explorer.data.repository.SettingsRepository
-import com.hfspaces.explorer.data.repository.SpacesRepository
 import com.hfspaces.explorer.system.DeepLink
 import com.hfspaces.explorer.system.DeepLinks
 import com.hfspaces.explorer.data.repository.TaskManager
 import com.hfspaces.explorer.ui.common.userMessage
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,8 +26,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 
 private fun <T> Flow<T>.stateIn(vm: ViewModel, initial: T): StateFlow<T> =
     stateIn(vm.viewModelScope, SharingStarted.WhileSubscribed(5_000), initial)
@@ -59,34 +54,9 @@ class ShellViewModel(
     val finishedTasks: Flow<SpaceTask> = taskManager.finished
 }
 
-class FavouritesViewModel(
-    private val favorites: FavoritesRepository,
-    private val spaces: SpacesRepository
-) : ViewModel() {
+/** The favourite hearts on Space cards. */
+class FavouritesViewModel(private val favorites: FavoritesRepository) : ViewModel() {
     val favourites = favorites.observe().stateIn(this, emptyList())
-
-    private val _isRefreshing = MutableStateFlow(false)
-    val isRefreshing = _isRefreshing.asStateFlow()
-
-    private var refreshed = false
-
-    /** Pulls current status for saved Spaces once per screen visit (or on pull-to-refresh). */
-    fun refresh(force: Boolean = false) {
-        if ((refreshed && !force) || _isRefreshing.value) return
-        refreshed = true
-        viewModelScope.launch {
-            _isRefreshing.value = true
-            val limit = Semaphore(4)
-            favorites.getAll().map { space ->
-                async {
-                    limit.withPermit {
-                        runCatching { favorites.refreshIfFavorite(spaces.fetchSpace(space.id, null)) }
-                    }
-                }
-            }.awaitAll()
-            _isRefreshing.value = false
-        }
-    }
 
     fun toggle(space: HfSpace) {
         viewModelScope.launch { favorites.toggle(space) }

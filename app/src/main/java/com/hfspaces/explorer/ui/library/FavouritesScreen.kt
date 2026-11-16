@@ -76,7 +76,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -179,9 +178,11 @@ class FavouritesLibraryViewModel(
         refreshed = true
         viewModelScope.launch {
             _refreshing.value = true
+            // Private favourites need the token; here it only ever goes to the Hub.
+            val token = apiKeys.defaultToken()
             val limit = Semaphore(4)
             favorites.getAll().map { space ->
-                async { limit.withPermit { runCatching { favorites.refreshIfFavorite(spaces.fetchSpace(space.id, null)) } } }
+                async { limit.withPermit { runCatching { favorites.refreshIfFavorite(spaces.fetchSpace(space.id, token)) } } }
             }.awaitAll()
             _refreshing.value = false
         }
@@ -189,8 +190,7 @@ class FavouritesLibraryViewModel(
 
     /** The default token's username, to prefill the import dialog. */
     suspend fun suggestedUsername(): String? {
-        val token = apiKeys.observe().first().let { keys -> (keys.firstOrNull { it.isDefault } ?: keys.firstOrNull())?.token }
-        return token?.takeIf { it.isNotBlank() }?.let { runCatching { hub.whoAmI(it)?.name }.getOrNull() }
+        return apiKeys.defaultToken()?.let { runCatching { hub.whoAmI(it)?.name }.getOrNull() }
     }
 
     /** Adds every Space [username] has liked on the Hub to favourites. */
@@ -201,11 +201,12 @@ class FavouritesLibraryViewModel(
             _importing.value = true
             try {
                 val ids = hub.likedSpaceIds(user)
+                val token = apiKeys.defaultToken()
                 val limit = Semaphore(4)
                 val added = ids.map { id ->
                     async {
                         limit.withPermit {
-                            runCatching { favorites.addIfMissing(spaces.knownSpace(id) ?: spaces.fetchSpace(id, null)) }.getOrDefault(false)
+                            runCatching { favorites.addIfMissing(spaces.knownSpace(id) ?: spaces.fetchSpace(id, token)) }.getOrDefault(false)
                         }
                     }
                 }.awaitAll().count { it }

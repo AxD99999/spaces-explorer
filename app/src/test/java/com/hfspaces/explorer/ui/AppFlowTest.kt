@@ -57,6 +57,10 @@ class AppFlowTest {
 
         compose.onNodeWithContentDescription("Space details and API").performClick()
         compose.waitUntilAtLeastOneExists(hasText("API endpoints (1)"), timeout)
+        // Fresh metadata has no top-level title or description; the listing's must survive it.
+        compose.onNodeWithText("Say hello").assertExists()
+        compose.onNodeWithText("Text Generation").assertExists()
+        compose.onAllNodesWithText("Hello World")[0].assertExists()
         screenshot("04-details")
 
         compose.onNodeWithContentDescription("Back").performClick()

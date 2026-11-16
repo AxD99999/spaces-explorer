@@ -25,6 +25,7 @@ import com.hfspaces.explorer.data.gradio.buildPayload
 import com.hfspaces.explorer.data.gradio.initialFormValue
 import com.hfspaces.explorer.data.gradio.inputKind
 import com.hfspaces.explorer.data.model.HfSpace
+import com.hfspaces.explorer.data.model.mergedOver
 import com.hfspaces.explorer.data.model.SpaceTask
 import com.hfspaces.explorer.data.model.UserApiKey
 import com.hfspaces.explorer.data.remote.SpaceIds
@@ -156,7 +157,7 @@ class SpaceViewModel(
         }
         // Fresh metadata: current status, host, and an up-to-date favourite entry.
         try {
-            val fresh = spaces.fetchSpace(spaceId, currentToken())
+            val fresh = spaces.fetchSpace(spaceId, currentToken()).mergedOver(cached)
             favorites.refreshIfFavorite(fresh)
             local.update { it.copy(space = fresh, spaceError = null) }
             if (cached == null) loadSpec()

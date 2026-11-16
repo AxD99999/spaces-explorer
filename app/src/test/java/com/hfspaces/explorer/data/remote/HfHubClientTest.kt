@@ -83,6 +83,17 @@ class HfHubClientTest {
     }
 
     @Test
+    fun `fetch space reads the title emoji and description from the card`() = runBlocking {
+        server.enqueue(MockResponse().setBody(Fixtures.read("space_metadata.json")))
+        val space = hub.fetchSpace("black-forest-labs/FLUX.1-dev", null)
+        assertEquals("FLUX.1 [dev]", space.displayTitle)
+        assertEquals("🖥️", space.displayEmoji)
+        assertEquals("Generate images from text", space.description)
+        assertEquals(SpaceStage.RUNNING, space.stage)
+        assertEquals("https://black-forest-labs-flux-1-dev.hf.space/", SpaceIds.resolveHost(space).toString())
+    }
+
+    @Test
     fun `fetch space refuses invalid ids without a request`() = runBlocking {
         val error = runCatching { hub.fetchSpace("../admin/x", null) }.exceptionOrNull()
         assertTrue(error is IllegalArgumentException)
@@ -123,8 +134,17 @@ class HfHubClientTest {
 
     @Test
     fun `author listing and runtime`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""[{"id":"ada/one","likes":3,"sdk":"gradio"},{"id":"ada/two","private":true}]"""))
-        assertEquals(listOf("ada/one", "ada/two"), hub.spacesByAuthor("ada", "hf_t").map { it.id })
+        // The author listing keeps titles in cardData too.
+        server.enqueue(
+            MockResponse().setBody(
+                """[{"id":"ada/one","likes":3,"sdk":"gradio","cardData":{"title":"Number One","emoji":"1️⃣"}},{"id":"ada/two","private":true}]"""
+            )
+        )
+        val mine = hub.spacesByAuthor("ada", "hf_t")
+        assertEquals(listOf("ada/one", "ada/two"), mine.map { it.id })
+        assertEquals(listOf("Number One", "two"), mine.map { it.displayTitle })
+        assertEquals("1️⃣", mine[0].displayEmoji)
+        assertTrue(mine[1].isPrivate)
         val list = server.takeRequest()
         assertEquals("/api/spaces?author=ada&limit=100&full=true", list.path)
         assertEquals("Bearer hf_t", list.getHeader("Authorization"))

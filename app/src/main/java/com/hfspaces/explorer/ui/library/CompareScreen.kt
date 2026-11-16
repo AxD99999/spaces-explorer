@@ -22,7 +22,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.outlined.CompareArrows
+import androidx.compose.material.icons.automirrored.outlined.CompareArrows
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -82,7 +82,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -186,8 +185,7 @@ class CompareViewModel(
         savedState[KEY_IDS] = ArrayList(slots.value.map { it.spaceId })
     }
 
-    private suspend fun token(): String? =
-        apiKeys.observe().first().let { keys -> (keys.firstOrNull { it.isDefault } ?: keys.firstOrNull())?.token?.takeIf { it.isNotBlank() } }
+    private suspend fun token(): String? = apiKeys.defaultToken()
 
     private companion object {
         const val KEY_IDS = "compare_ids"
@@ -233,7 +231,7 @@ fun CompareScreen(viewModel: CompareViewModel, picker: SpacePickerViewModel, onB
             if (state.slots.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     MessageState(
-                        icon = Icons.Outlined.CompareArrows,
+                        icon = Icons.AutoMirrored.Outlined.CompareArrows,
                         title = "Compare Spaces",
                         message = "Add up to three Spaces, type one prompt, and see their outputs side by side.",
                         actionLabel = "Add a Space",

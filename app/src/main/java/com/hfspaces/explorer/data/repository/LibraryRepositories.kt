@@ -6,10 +6,12 @@ import com.hfspaces.explorer.data.local.dao.FavoritesDao
 import com.hfspaces.explorer.data.local.entity.ApiKeyEntity
 import com.hfspaces.explorer.data.local.entity.FavoriteSpaceEntity
 import com.hfspaces.explorer.data.model.HfSpace
+import com.hfspaces.explorer.data.model.mergedOver
 import com.hfspaces.explorer.data.model.UserApiKey
 import com.hfspaces.explorer.data.security.TokenCipher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
@@ -38,10 +40,10 @@ class FavoritesRepository(
 
     suspend fun get(spaceId: String): HfSpace? = dao.get(spaceId)?.toHfSpace()
 
-    /** Replaces a stored favourite with fresh metadata, keeping its position in the list. */
+    /** Updates a stored favourite with fresh metadata, keeping its position and what the new copy lacks. */
     suspend fun refreshIfFavorite(space: HfSpace) {
         val existing = dao.get(space.id) ?: return
-        dao.insert(FavoriteSpaceEntity.fromHfSpace(space, savedAt = existing.savedAt))
+        dao.insert(FavoriteSpaceEntity.fromHfSpace(space.mergedOver(existing.toHfSpace()), savedAt = existing.savedAt))
     }
 
     suspend fun getAll(): List<HfSpace> = dao.getAll().map { it.toHfSpace() }
@@ -94,4 +96,10 @@ class ApiKeysRepository(
     }
 
     suspend fun setDefault(id: String) = dao.setDefault(id)
+
+    /** The token to use when the user hasn't picked one: the default, else any that still decrypts. */
+    suspend fun defaultToken(): String? {
+        val usable = observe().first().filter { it.token.isNotBlank() }
+        return (usable.firstOrNull { it.isDefault } ?: usable.firstOrNull())?.token
+    }
 }

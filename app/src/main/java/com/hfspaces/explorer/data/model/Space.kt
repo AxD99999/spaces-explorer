@@ -2,6 +2,12 @@ package com.hfspaces.explorer.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 
 @Serializable
 data class HfAuthorData(
@@ -77,7 +83,19 @@ data class HfSpace(
     val pinned: Boolean = false,
     val featured: Boolean = false,
     val subdomain: String? = null,
-    val host: String? = null
+    val host: String? = null,
+    @SerialName("private")
+    val isPrivate: Boolean = false,
+    /** `false`, or the gating mode ("auto" / "manual"). */
+    val gated: JsonElement? = null,
+    /** Models and datasets the Hub found in the Space's code. Untyped: a surprise here must not break the Space. */
+    val models: JsonElement? = null,
+    val datasets: JsonElement? = null,
+    /**
+     * The Space's README front matter. Space metadata and author listings keep the title, emoji and
+     * description here rather than at the top level; see [normalized].
+     */
+    val cardData: JsonElement? = null
 ) {
     val displayTitle: String
         get() = title?.takeIf { it.isNotBlank() } ?: id.substringAfter('/')
@@ -114,6 +132,45 @@ data class HfSpace(
     val hubUrl: String
         get() = "https://huggingface.co/spaces/$id"
 
+    val isGated: Boolean
+        get() = (gated as? JsonPrimitive)?.let { it.isString || it.booleanOrNull == true } == true
+
+    val license: String?
+        get() = card("license")
+
+    /** Version of the SDK the Space is built with, e.g. Gradio "5.25.2". */
+    val sdkVersion: String?
+        get() = card("sdk_version")
+
+    val linkedModels: List<String>
+        get() = (models.strings() + (cardData as? JsonObject)?.get("models").strings()).distinct()
+
+    val linkedDatasets: List<String>
+        get() = (datasets.strings() + (cardData as? JsonObject)?.get("datasets").strings()).distinct()
+
+    /**
+     * Lifts the title, emoji, colours and description out of [cardData] when the top level lacks
+     * them, and keeps only the card keys the app reads. Card data is written by Space authors, so
+     * every value is read leniently.
+     */
+    fun normalized(): HfSpace {
+        val card = cardData as? JsonObject ?: return if (cardData == null) this else copy(cardData = null)
+        return copy(
+            title = title.orCard("title"),
+            emoji = emoji.orCard("emoji"),
+            colorFrom = colorFrom.orCard("colorFrom"),
+            colorTo = colorTo.orCard("colorTo"),
+            shortDescription = shortDescription.orCard("short_description"),
+            pinned = pinned || (card["pinned"] as? JsonPrimitive)?.booleanOrNull == true,
+            cardData = JsonObject(card.filterKeys { it in KEPT_CARD_KEYS }).takeIf { it.isNotEmpty() }
+        )
+    }
+
+    private fun card(key: String): String? =
+        ((cardData as? JsonObject)?.get(key) as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun String?.orCard(key: String): String? = this?.takeIf { it.isNotBlank() } ?: card(key)
+
     val category: String
         get() = aiCategory?.takeIf { it.isNotBlank() } ?: inferCategory()
 
@@ -134,6 +191,44 @@ data class HfSpace(
             else -> "AI Space"
         }
     }
+}
+
+private val KEPT_CARD_KEYS = setOf("license", "sdk_version", "models", "datasets")
+
+private fun JsonElement?.strings(): List<String> =
+    (this as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank) }.orEmpty()
+
+/**
+ * This copy of a Space, with whatever it lacks filled in from an [older] one. Listings carry the
+ * author, AI summary and trending score; metadata carries the host, card and linked models; so
+ * neither may simply replace the other.
+ */
+fun HfSpace.mergedOver(older: HfSpace?): HfSpace {
+    if (older == null || older.id != id) return this
+    return copy(
+        title = title ?: older.title,
+        author = author ?: older.author,
+        authorData = authorData ?: older.authorData,
+        emoji = emoji ?: older.emoji,
+        colorFrom = colorFrom ?: older.colorFrom,
+        colorTo = colorTo ?: older.colorTo,
+        sdk = sdk ?: older.sdk,
+        runtime = runtime ?: older.runtime,
+        shortDescription = shortDescription ?: older.shortDescription,
+        aiShortDescription = aiShortDescription ?: older.aiShortDescription,
+        aiCategory = aiCategory ?: older.aiCategory,
+        trendingScore = if (trendingScore != 0.0) trendingScore else older.trendingScore,
+        createdAt = createdAt ?: older.createdAt,
+        lastModified = lastModified ?: older.lastModified,
+        tags = tags.ifEmpty { older.tags },
+        featured = featured || older.featured,
+        subdomain = subdomain ?: older.subdomain,
+        host = host ?: older.host,
+        gated = gated ?: older.gated,
+        models = models ?: older.models,
+        datasets = datasets ?: older.datasets,
+        cardData = cardData ?: older.cardData
+    )
 }
 
 @Serializable

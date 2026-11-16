@@ -53,7 +53,15 @@ object FakeHub {
             path.startsWith("/api/spaces/semantic-search") -> json("[]")
             path.startsWith("/api/spaces/") -> {
                 val id = path.removePrefix("/api/spaces/")
-                json("""{"id":"$id","sdk":"gradio","host":"https://gradio-hello-world.hf.space","runtime":{"stage":"RUNNING","hardware":{"current":"cpu-basic"}},"title":"Hello World","emoji":"👋","likes":543}""")
+                // Like the real Hub: the title and emoji only appear inside cardData.
+                json(
+                    """{"id":"$id","sdk":"gradio","likes":543,"private":false,"gated":false,"author":"${id.substringBefore('/')}",""" +
+                        """"host":"https://gradio-hello-world.hf.space","subdomain":"gradio-hello-world",""" +
+                        """"lastModified":"2026-11-12T20:42:02.000Z","createdAt":"2022-08-30T06:21:57.000Z",""" +
+                        """"cardData":{"title":"Hello World","emoji":"👋","sdk":"gradio","sdk_version":"6.32.0","license":"mit","pinned":false},""" +
+                        """"models":["openai/whisper-large-v3"],""" +
+                        """"runtime":{"stage":"RUNNING","hardware":{"current":"cpu-basic","requested":"cpu-basic"}}}"""
+                )
             }
             path == "/gradio_api/info" -> json(Fixtures.read("info_hello-world.json"))
             request.method == "POST" && path == "/gradio_api/call/predict" -> {

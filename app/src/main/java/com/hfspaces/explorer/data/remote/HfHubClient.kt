@@ -87,7 +87,7 @@ class HfHubClient(
             }
             val body = response.body?.string().orEmpty()
             val parsed = decodeOrThrow<HfSpacesPage>(body, "Space list")
-            val spaces = parsed.spaces.filter { SpaceIds.isValidSpaceId(it.id) }
+            val spaces = parsed.spaces.filter { SpaceIds.isValidSpaceId(it.id) }.map { it.normalized() }
             val perPage = parsed.numItemsPerPage ?: DEFAULT_PAGE_SIZE
             SpacesPageResult(spaces, hasMore = parsed.spaces.size >= perPage)
         }
@@ -115,6 +115,7 @@ class HfHubClient(
             }
             array.mapNotNull { item -> runCatching { AppJson.decodeFromJsonElement<HfSpace>(item) }.getOrNull() }
                 .filter { SpaceIds.isValidSpaceId(it.id) }
+                .map { it.normalized() }
         }
     }
 
@@ -133,7 +134,7 @@ class HfHubClient(
                 response.code == 404 -> throw HttpStatusException(404, "Space \"$spaceId\" was not found")
                 !response.isSuccessful -> throw HttpStatusException(response.code, "Hugging Face returned HTTP ${response.code} for $spaceId")
             }
-            decodeOrThrow<HfSpace>(response.body?.string().orEmpty(), "Space metadata")
+            decodeOrThrow<HfSpace>(response.body?.string().orEmpty(), "Space metadata").normalized()
         }
     }
 
@@ -180,7 +181,9 @@ class HfHubClient(
             .build()
         return client.execute(jsonRequest(url, token)) { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code, "Couldn't list $author's Spaces (HTTP ${response.code})")
-            decodeOrThrow<List<HfSpace>>(response.body?.string().orEmpty(), "Space list").filter { SpaceIds.isValidSpaceId(it.id) }
+            decodeOrThrow<List<HfSpace>>(response.body?.string().orEmpty(), "Space list")
+                .filter { SpaceIds.isValidSpaceId(it.id) }
+                .map { it.normalized() }
         }
     }
 

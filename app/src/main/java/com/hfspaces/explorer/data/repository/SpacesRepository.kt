@@ -3,6 +3,7 @@ package com.hfspaces.explorer.data.repository
 import com.hfspaces.explorer.data.gradio.SpaceApiSpec
 import com.hfspaces.explorer.data.gradio.toEndpoints
 import com.hfspaces.explorer.data.model.HfSpace
+import com.hfspaces.explorer.data.model.mergedOver
 import com.hfspaces.explorer.data.remote.AppJson
 import com.hfspaces.explorer.data.remote.GradioClient
 import com.hfspaces.explorer.data.remote.HfHubClient
@@ -71,8 +72,9 @@ class SpacesRepository(
 
     fun knownSpace(spaceId: String): HfSpace? = known[spaceId]
 
+    /** Fresh metadata, completed with what a listing already told us about the Space. */
     suspend fun fetchSpace(spaceId: String, token: String?): HfSpace =
-        hub.fetchSpace(spaceId, token).also { known[it.id] = merge(known[it.id], it) }
+        hub.fetchSpace(spaceId, token).mergedOver(known[spaceId]).also { known[it.id] = it }
 
     /**
      * Resolves where the Space is hosted and reads its Gradio API description. Listing entries
@@ -98,13 +100,10 @@ class SpacesRepository(
         const val SPEC_TTL_MS = 5 * 60 * 1000L
     }
 
+    /** Listing entries lack the host and card; keep those once metadata has supplied them. */
     private fun remember(spaces: List<HfSpace>) {
-        spaces.forEach { known[it.id] = merge(known[it.id], it) }
+        spaces.forEach { known[it.id] = it.mergedOver(known[it.id]) }
     }
-
-    /** Listing entries lack `host`/`subdomain`; keep them once metadata has supplied them. */
-    private fun merge(old: HfSpace?, new: HfSpace): HfSpace =
-        if (old == null) new else new.copy(host = new.host ?: old.host, subdomain = new.subdomain ?: old.subdomain)
 
     private suspend fun writeCache(spaces: List<HfSpace>) = withContext(Dispatchers.IO) {
         runCatching {

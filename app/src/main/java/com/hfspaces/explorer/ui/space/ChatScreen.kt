@@ -76,7 +76,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
@@ -192,8 +191,7 @@ class ChatViewModel(
         _state.update { it.copy(messages = messages) }
     }
 
-    private suspend fun token(): String? =
-        apiKeys.observe().first().let { keys -> (keys.firstOrNull { it.isDefault } ?: keys.firstOrNull())?.token?.takeIf { it.isNotBlank() } }
+    private suspend fun token(): String? = apiKeys.defaultToken()
 }
 
 @Composable

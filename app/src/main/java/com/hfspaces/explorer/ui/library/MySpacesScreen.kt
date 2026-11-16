@@ -79,7 +79,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -106,7 +105,7 @@ class MySpacesViewModel(private val hub: HfHubClient, private val apiKeys: ApiKe
     fun refresh() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            val token = defaultToken(apiKeys)
+            val token = apiKeys.defaultToken()
             if (token == null) {
                 _state.value = MySpacesState(loading = false, needsToken = true)
                 return@launch
@@ -130,9 +129,6 @@ class MySpacesViewModel(private val hub: HfHubClient, private val apiKeys: ApiKe
         }
     }
 }
-
-private suspend fun defaultToken(apiKeys: ApiKeysRepository): String? =
-    apiKeys.observe().first().let { keys -> (keys.firstOrNull { it.isDefault } ?: keys.firstOrNull())?.token?.takeIf { it.isNotBlank() } }
 
 @Composable
 fun MySpacesScreen(
@@ -227,7 +223,7 @@ class ManageSpaceViewModel(
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             try {
-                val runtime = hub.fetchRuntime(spaceId, defaultToken(apiKeys))
+                val runtime = hub.fetchRuntime(spaceId, apiKeys.defaultToken())
                 _state.update { it.copy(runtime = runtime, loading = false) }
             } catch (e: CancellationException) {
                 throw e
@@ -245,7 +241,7 @@ class ManageSpaceViewModel(
         logJob?.cancel()
         _state.update { it.copy(logKind = kind, logs = emptyList(), logError = null) }
         logJob = viewModelScope.launch {
-            val token = defaultToken(apiKeys) ?: run {
+            val token = apiKeys.defaultToken() ?: run {
                 _state.update { it.copy(logError = "Logs need a token with access to this Space") }
                 return@launch
             }
@@ -263,7 +259,7 @@ class ManageSpaceViewModel(
 
     private fun action(label: String, block: suspend (String) -> Unit) {
         viewModelScope.launch {
-            val token = defaultToken(apiKeys) ?: run {
+            val token = apiKeys.defaultToken() ?: run {
                 messages.trySend("Add a token with write access first")
                 return@launch
             }

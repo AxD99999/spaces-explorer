@@ -1,0 +1,43 @@
+{
+  "_id": "65f0c0ffee0000000000abcd",
+  "id": "black-forest-labs/FLUX.1-dev",
+  "sdk": "gradio",
+  "likes": 12345,
+  "tags": ["gradio", "region:us"],
+  "private": false,
+  "author": "black-forest-labs",
+  "sha": "0123456789abcdef0123456789abcdef01234567",
+  "lastModified": "2026-10-02T09:15:00.000Z",
+  "cardData": {
+    "title": "FLUX.1 [dev]",
+    "emoji": "🖥️",
+    "colorFrom": "yellow",
+    "colorTo": "pink",
+    "sdk": "gradio",
+    "sdk_version": 5.25,
+    "app_file": "app.py",
+    "pinned": true,
+    "license": "mit",
+    "short_description": "Generate images from text",
+    "hf_oauth_scopes": ["inference-api"],
+    "datasets": ["someone/prompts"]
+  },
+  "subdomain": "black-forest-labs-flux-1-dev",
+  "gated": "auto",
+  "disabled": false,
+  "host": "https://black-forest-labs-flux-1-dev.hf.space",
+  "models": ["black-forest-labs/FLUX.1-dev", "madebyollin/taef1"],
+  "region": "us",
+  "visibility": "public",
+  "siblings": [{"rfilename": "README.md"}, {"rfilename": "app.py"}],
+  "createdAt": "2024-08-01T12:00:00.000Z",
+  "usedStorage": 897877,
+  "runtime": {
+    "stage": "RUNNING",
+    "hardware": {"current": "zero-a10g", "requested": "zero-a10g"},
+    "gcTimeout": 172800,
+    "replicas": {"current": 1, "requested": 1},
+    "devMode": false,
+    "domains": [{"domain": "black-forest-labs-flux-1-dev.hf.space", "stage": "READY"}]
+  }
+}
