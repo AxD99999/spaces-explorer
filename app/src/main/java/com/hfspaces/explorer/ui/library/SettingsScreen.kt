@@ -1,6 +1,7 @@
 package com.hfspaces.explorer.ui.library
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
@@ -137,6 +138,27 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     checked = settings.showAdultSpaces,
                     onChange = viewModel::setShowAdult
                 )
+            }
+            SectionCard("Links") {
+                Text(
+                    "Links to Space pages (huggingface.co/spaces/…) can open here instead of the browser. " +
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) "Turn the links on under “Open by default”." else "Android asks which app to use the first time.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "Either way, you can share a Space's page to this app, or paste its link into search.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(onClick = {
+                    val packageUri = Uri.fromParts("package", context.packageName, null)
+                    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        Intent(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS, packageUri)
+                    } else {
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri)
+                    }
+                    runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }) { Text("Link settings") }
             }
             SectionCard("Storage") {
                 Text("Cached lists and files staged for upload. Saved outputs and favourites aren't affected.", style = MaterialTheme.typography.bodySmall)

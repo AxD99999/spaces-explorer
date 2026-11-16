@@ -13,6 +13,7 @@ kotlinxCoroutines = "1.9.0"
 coil = "2.7.0"
 room = "2.6.1"
 media3 = "1.5.0"
+browser = "1.8.0"
 junit = "4.13.2"
 robolectric = "4.14.1"
 androidxTestCore = "1.6.1"
@@ -54,6 +55,9 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 # Media playback
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+
+# Custom Tabs, for web pages and Space web apps
+androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }

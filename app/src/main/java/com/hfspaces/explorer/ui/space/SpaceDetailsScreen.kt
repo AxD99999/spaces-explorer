@@ -1,6 +1,7 @@
 package com.hfspaces.explorer.ui.space
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -17,19 +18,26 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.OpenInBrowser
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,7 +49,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +63,7 @@ import com.hfspaces.explorer.data.gradio.SpaceEndpoint
 import com.hfspaces.explorer.data.gradio.inputKind
 import com.hfspaces.explorer.data.model.HfSpace
 import com.hfspaces.explorer.data.model.SpaceStage
+import com.hfspaces.explorer.data.remote.SpaceIds
 import com.hfspaces.explorer.ui.LocalSnackbarHostState
 import com.hfspaces.explorer.ui.common.CodeBlock
 import com.hfspaces.explorer.ui.common.EmojiAvatar
@@ -61,7 +72,11 @@ import com.hfspaces.explorer.ui.common.FavoriteButton
 import com.hfspaces.explorer.ui.common.FullScreenBox
 import com.hfspaces.explorer.ui.common.SectionCard
 import com.hfspaces.explorer.ui.common.SpaceBadges
+import com.hfspaces.explorer.ui.common.compactCount
+import com.hfspaces.explorer.ui.common.mediumDate
 import com.hfspaces.explorer.ui.common.openUrl
+import com.hfspaces.explorer.ui.common.relativeTime
+import com.hfspaces.explorer.ui.common.shareContent
 import com.hfspaces.explorer.ui.theme.LocalStatusColors
 import kotlinx.coroutines.launch
 
@@ -69,9 +84,15 @@ import kotlinx.coroutines.launch
 fun SpaceDetailsScreen(viewModel: SpaceViewModel, onBack: () -> Unit, onRun: (String) -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val snackbar = LocalSnackbarHostState.current
     val scope = rememberCoroutineScope()
+    var menuOpen by remember { mutableStateOf(false) }
     LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.showSnackbar(it) } }
+
+    val hubUrl = "https://huggingface.co/spaces/${state.spaceId}"
+    // The Space's own page, without the Hub around it. Falls back to the Hub page until we know where it lives.
+    val webAppUrl = remember(state.space) { state.space?.let(SpaceIds::webAppUrl) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -81,23 +102,68 @@ fun SpaceDetailsScreen(viewModel: SpaceViewModel, onBack: () -> Unit, onRun: (St
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") } },
                 actions = {
                     if (state.space != null) FavoriteButton(state.isFavorite, viewModel::toggleFavorite)
-                    IconButton(onClick = { context.openUrl("https://huggingface.co/spaces/${state.spaceId}") }) {
-                        Icon(Icons.Outlined.OpenInBrowser, contentDescription = "Open on Hugging Face")
+                    IconButton(onClick = { context.shareContent(null, hubUrl, null) }) {
+                        Icon(Icons.Outlined.Share, contentDescription = "Share Space")
+                    }
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "More options") }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Open web app") },
+                                leadingIcon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+                                onClick = {
+                                    menuOpen = false
+                                    context.openUrl(webAppUrl ?: hubUrl)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("View on Hugging Face") },
+                                leadingIcon = { Icon(Icons.Outlined.OpenInBrowser, contentDescription = null) },
+                                onClick = {
+                                    menuOpen = false
+                                    context.openUrl(hubUrl)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copy link") },
+                                leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                                onClick = {
+                                    menuOpen = false
+                                    clipboard.setText(AnnotatedString(hubUrl))
+                                    scope.launch { snackbar.showSnackbar("Link copied") }
+                                }
+                            )
+                        }
                     }
                 }
             )
         },
         bottomBar = {
             val space = state.space
-            if (space != null && space.isRunnable) {
+            if (space != null) {
                 Surface(tonalElevation = 3.dp) {
-                    Button(
-                        onClick = { onRun(space.id) },
-                        modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)
+                    Row(
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Run in app")
+                        if (space.isRunnable) {
+                            OutlinedButton(onClick = { context.openUrl(webAppUrl ?: hubUrl) }, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Outlined.Public, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Web app")
+                            }
+                            Button(onClick = { onRun(space.id) }, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Run in app")
+                            }
+                        } else {
+                            Button(onClick = { context.openUrl(webAppUrl ?: hubUrl) }, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Outlined.Public, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Open web app")
+                            }
+                        }
                     }
                 }
             }
@@ -119,14 +185,15 @@ fun SpaceDetailsScreen(viewModel: SpaceViewModel, onBack: () -> Unit, onRun: (St
                 if (space.isRunnable) {
                     ApiSection(state.spec, onRetry = viewModel::retry, onCopied = { scope.launch { snackbar.showSnackbar("Copied") } })
                 } else {
-                    SectionCard("Not runnable here") {
+                    SectionCard("Runs as a web app") {
                         Text(
-                            "This is a ${space.sdkLabel} Space. Only Gradio Spaces expose an API this app can call. Open it on Hugging Face to use it.",
+                            "This is a ${space.sdkLabel} Space. Only Gradio Spaces have an API this app can fill in a form for, " +
+                                "so this one opens as its own web page, on top of the app.",
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        TextButton(onClick = { context.openUrl(space.hubUrl) }) { Text("Open on Hugging Face") }
                     }
                 }
+                AboutSection(space, onOpen = { context.openUrl(it) })
             }
         }
     }
@@ -140,7 +207,11 @@ private fun Header(space: HfSpace) {
             Spacer(Modifier.width(14.dp))
             Column {
                 Text(space.displayTitle, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("by ${space.displayAuthor} · ♥ ${space.likes}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "by ${space.displayAuthor} · ♥ ${compactCount(space.likes)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         space.description?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
@@ -163,6 +234,47 @@ private fun Header(space: HfSpace) {
         }
     }
 }
+
+/** When the Space was touched, what it's built with, and the models and datasets it uses. */
+@Composable
+private fun AboutSection(space: HfSpace, onOpen: (String) -> Unit) {
+    val facts = remember(space) {
+        listOfNotNull(
+            relativeTime(space.lastModified)?.let { "Updated" to it },
+            mediumDate(space.createdAt)?.let { "Created" to it },
+            space.sdkVersion?.let { "Built with" to "${space.sdkLabel.replaceFirstChar(Char::uppercase)} $it" },
+            space.license?.let { "License" to it }
+        )
+    }
+    // Ids come from the Space's card; only well-formed ones become links.
+    val models = remember(space) { space.linkedModels.filter(SpaceIds::isValidRepoId).take(MAX_LINKED) }
+    val datasets = remember(space) { space.linkedDatasets.filter(SpaceIds::isValidRepoId).take(MAX_LINKED) }
+    if (facts.isEmpty() && models.isEmpty() && datasets.isEmpty()) return
+
+    SectionCard("About") {
+        facts.forEach { (label, value) ->
+            Row {
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(96.dp))
+                Text(value, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        LinkedRepos("Models", models) { onOpen("https://huggingface.co/$it") }
+        LinkedRepos("Datasets", datasets) { onOpen("https://huggingface.co/datasets/$it") }
+    }
+}
+
+@Composable
+private fun LinkedRepos(title: String, ids: List<String>, onOpen: (String) -> Unit) {
+    if (ids.isEmpty()) return
+    Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ids.forEach { id ->
+            AssistChip(onClick = { onOpen(id) }, label = { Text(id, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+        }
+    }
+}
+
+private const val MAX_LINKED = 8
 
 @Composable
 private fun ApiSection(spec: SpecState, onRetry: () -> Unit, onCopied: () -> Unit) {

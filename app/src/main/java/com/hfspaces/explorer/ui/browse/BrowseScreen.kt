@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.History
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,10 +65,12 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hfspaces.explorer.data.model.HF_CATEGORIES
 import com.hfspaces.explorer.data.model.HfSpace
+import com.hfspaces.explorer.data.remote.SpaceIds
 import com.hfspaces.explorer.ui.LocalSnackbarHostState
 import com.hfspaces.explorer.ui.common.ErrorState
 import com.hfspaces.explorer.ui.common.MessageState
@@ -167,6 +171,16 @@ fun BrowseScreen(
                 onRemoveRecent = viewModel::removeRecentSearch,
                 onOpenFilters = { showFilters = true }
             )
+            // A pasted link or `owner/name` goes straight to that Space, listed or not.
+            val directId = remember(state.filter.search) { SpaceIds.fromLink(state.filter.search) }
+            if (directId != null) {
+                AssistChip(
+                    onClick = { onOpenSpace(HfSpace(id = directId)) },
+                    label = { Text("Open $directId", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
             CategoryChips(selected = state.filter.category, onSelect = viewModel::onCategorySelected)
             if (state.showingCached) {
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {

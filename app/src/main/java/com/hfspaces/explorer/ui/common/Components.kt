@@ -1,10 +1,14 @@
 package com.hfspaces.explorer.ui.common
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.browser.customtabs.CustomTabsClient
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.net.toUri
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -112,6 +116,8 @@ fun SpaceBadges(space: HfSpace, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         StagePill(space.stage)
+        if (space.isPrivate) Pill("Private", colors.neutral)
+        if (space.isGated) Pill("Gated", colors.sleeping)
         Pill(space.category, colors.category)
         Pill(space.sdkLabel, colors.sdk)
         space.hardwareLabel?.let { Pill(it, colors.neutral) }
@@ -191,7 +197,7 @@ fun SpaceCard(
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    "${space.likes}",
+                    compactCount(space.likes),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.semantics { contentDescription = "${space.likes} likes" }
@@ -362,13 +368,44 @@ fun FullScreenBox(modifier: Modifier = Modifier, content: @Composable () -> Unit
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
 }
 
-/** Opens a URL without crashing when no app can handle it. */
+/**
+ * Opens a web page in a Custom Tab on top of the app, or in the browser when none supports that.
+ *
+ * The browser is always named explicitly: this app also handles links to Space pages, and must
+ * not be handed its own "open on Hugging Face" request back. Only web addresses are opened, since
+ * some of these links come from Space output.
+ */
 fun Context.openUrl(url: String) {
-    try {
-        startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    } catch (e: ActivityNotFoundException) {
-        Toast.makeText(this, "No app can open this link", Toast.LENGTH_SHORT).show()
+    val uri = url.toUri()
+    if (uri.scheme?.lowercase() !in setOf("https", "http")) {
+        Toast.makeText(this, "This link can't be opened", Toast.LENGTH_SHORT).show()
+        return
     }
+    val inActivity = findActivity() != null
+    try {
+        val browser = CustomTabsClient.getPackageName(this, emptyList())
+        if (browser != null) {
+            val tab = CustomTabsIntent.Builder().setShowTitle(true).build()
+            tab.intent.setPackage(browser)
+            if (!inActivity) tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            tab.launchUrl(this, uri)
+        } else {
+            // Resolved against a generic web address, so only real browsers match.
+            val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.selector = Intent(Intent.ACTION_VIEW, "https://".toUri()).addCategory(Intent.CATEGORY_BROWSABLE)
+            startActivity(intent)
+        }
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(this, "No browser can open this link", Toast.LENGTH_SHORT).show()
+    } catch (e: IllegalArgumentException) {
+        Toast.makeText(this, "This link can't be opened", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 /** Opens a local or remote file with a viewer app. */

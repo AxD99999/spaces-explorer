@@ -12,6 +12,13 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- Finds the browser that can show web pages in a Custom Tab (package visibility, Android 11+). -->
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
+
     <!--
         Backups are off: tokens are encrypted with a Keystore key that never leaves the device,
         so a restored copy could not be decrypted anyway.
@@ -37,6 +44,19 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!--
+                Space pages on the Hub. The domain isn't ours, so the links can't be verified:
+                Android 12+ only sends them here once the user allows it under "Open by default".
+            -->
+            <intent-filter android:label="@string/open_space_label">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="huggingface.co" />
+                <data android:host="hf.co" />
+                <data android:pathPattern="/spaces/.*/.*" />
             </intent-filter>
             <!-- "Send to a Space" from other apps. -->
             <intent-filter android:label="@string/share_label">

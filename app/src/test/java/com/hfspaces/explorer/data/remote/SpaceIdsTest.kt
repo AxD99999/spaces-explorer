@@ -82,4 +82,55 @@ class SpaceIdsTest {
         assertFalse(SpaceIds.isHuggingFaceHost("https://raw.githubusercontent.com/x".toHttpUrl()))
         assertFalse(SpaceIds.isHuggingFaceHost("https://nothuggingface.co/".toHttpUrl()))
     }
+
+    @Test
+    fun `space links are recognised wherever they appear`() {
+        assertEquals("gradio/hello_world", SpaceIds.fromUrl("https://huggingface.co/spaces/gradio/hello_world"))
+        assertEquals("gradio/hello_world", SpaceIds.fromUrl("https://huggingface.co/spaces/gradio/hello_world/tree/main?x=1#readme"))
+        assertEquals("black-forest-labs/FLUX.1-dev", SpaceIds.fromUrl("Look at this: HTTPS://HF.co/spaces/black-forest-labs/FLUX.1-dev."))
+        assertEquals("a/b", SpaceIds.fromUrl("huggingface.co/spaces/a/b"))
+        assertEquals("a/b", SpaceIds.fromUrl("https://www.huggingface.co/spaces/a/b"))
+
+        // Not Space pages.
+        assertNull(SpaceIds.fromUrl("https://huggingface.co/spaces/gradio"))
+        assertNull(SpaceIds.fromUrl("https://huggingface.co/gradio/hello_world"))
+        assertNull(SpaceIds.fromUrl("https://huggingface.co/datasets/a/b"))
+        assertNull(SpaceIds.fromUrl("https://example.com/spaces/a/b"))
+        assertNull(SpaceIds.fromUrl("https://huggingface.co/spaces/a/.."))
+        assertNull(SpaceIds.fromUrl("a prompt about cats/dogs"))
+        assertNull(SpaceIds.fromUrl(null))
+    }
+
+    @Test
+    fun `typed text may also be a bare id`() {
+        assertEquals("gradio/hello_world", SpaceIds.fromLink("  gradio/hello_world "))
+        assertEquals("a/b", SpaceIds.fromLink("https://hf.co/spaces/a/b"))
+        assertNull(SpaceIds.fromLink("image generation"))
+        assertNull(SpaceIds.fromLink("a/b/c"))
+        assertNull(SpaceIds.fromLink(""))
+    }
+
+    @Test
+    fun `the web app address comes from the hub and stays on hf space`() {
+        assertEquals("https://gradio-hello-world.hf.space/", SpaceIds.webAppUrl(HfSpace(id = "gradio/hello_world", host = "https://gradio-hello-world.hf.space")))
+        // Static Spaces live one label deeper; fine for a browser, though never for API calls.
+        val static = HfSpace(id = "a/site", runtime = HfSpaceRuntime(domains = listOf(HfSpaceDomain("a-site.static.hf.space", "READY"))))
+        assertEquals("https://a-site.static.hf.space/", SpaceIds.webAppUrl(static))
+        assertNull(SpaceIds.resolveHost(static)?.takeIf { it.host.contains("static") })
+        // Anything off hf.space is ignored in favour of the conventional address.
+        val hostile = HfSpace(id = "owner/name", host = "https://attacker.example", runtime = HfSpaceRuntime(domains = listOf(HfSpaceDomain("evil.example"))))
+        assertEquals("https://owner-name.hf.space/", SpaceIds.webAppUrl(hostile))
+        assertEquals("https://owner-name.hf.space/", SpaceIds.webAppUrl(HfSpace(id = "owner/name", host = "https://user:pw@x.hf.space")))
+        assertEquals("https://owner-name.hf.space/", SpaceIds.webAppUrl(HfSpace(id = "owner/name", host = "https://.hf.space")))
+    }
+
+    @Test
+    fun `repo ids are checked before they go into links`() {
+        assertTrue(SpaceIds.isValidRepoId("gpt2"))
+        assertTrue(SpaceIds.isValidRepoId("openai/whisper-large-v3"))
+        assertFalse(SpaceIds.isValidRepoId("a/b/c"))
+        assertFalse(SpaceIds.isValidRepoId("../secret"))
+        assertFalse(SpaceIds.isValidRepoId("a b"))
+        assertFalse(SpaceIds.isValidRepoId(""))
+    }
 }

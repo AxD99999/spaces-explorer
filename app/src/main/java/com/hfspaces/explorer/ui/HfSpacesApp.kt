@@ -129,6 +129,7 @@ fun HfSpacesApp() {
         val link = pendingLink ?: return@LaunchedEffect
         when (link) {
             is DeepLink.Runner -> navController.navigate(Routes.runner(link.spaceId, link.fromTaskId)) { launchSingleTop = true }
+            is DeepLink.Details -> navController.navigate(Routes.details(link.spaceId)) { launchSingleTop = true }
             is DeepLink.Screen -> navController.navigate(link.route) { launchSingleTop = true }
             DeepLink.ShareTarget -> navController.navigate(Routes.SHARE) { launchSingleTop = true }
         }

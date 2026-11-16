@@ -2,6 +2,7 @@ package com.hfspaces.explorer.ui
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Looper
 import org.robolectric.Shadows.shadowOf
 import java.time.Duration
@@ -23,6 +24,7 @@ import androidx.compose.ui.test.performTextReplacement
 import com.hfspaces.explorer.HfSpacesApplication
 import com.hfspaces.explorer.MainActivity
 import com.hfspaces.explorer.testing.TestApp
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -140,11 +142,49 @@ class AppFlowTest {
 
         compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Many 25"))
         compose.onNodeWithText("Many 25").assertIsDisplayed().performClick()
-        compose.waitUntilAtLeastOneExists(hasContentDescription("Open on Hugging Face"), timeout)
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Share Space"), timeout)
         compose.onNodeWithContentDescription("Back").performClick()
         compose.waitUntilAtLeastOneExists(hasContentDescription("Open menu"), timeout)
         compose.waitForIdle()
         compose.onNodeWithText("Many 25").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a link to a space opens it`() {
+        compose.waitUntilAtLeastOneExists(hasText("Hello World"), timeout)
+        val links = (compose.activity.application as HfSpacesApplication).container.deepLinks
+        compose.runOnUiThread {
+            links.handle(Intent(Intent.ACTION_VIEW, Uri.parse("https://huggingface.co/spaces/gradio/hello_world?logs=container")))
+        }
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Share Space"), timeout)
+        compose.waitUntilAtLeastOneExists(hasText("API endpoints (1)"), timeout)
+        // The About card, from metadata the listing doesn't have.
+        compose.waitUntilAtLeastOneExists(hasText("Gradio 6.32.0"), timeout)
+        compose.onNodeWithText("openai/whisper-large-v3").assertExists()
+        compose.onNodeWithText("Web app").assertExists()
+        screenshot("15-details-from-link")
+        compose.onNodeWithContentDescription("Back").performClick()
+
+        // Sharing a Space's page from a browser opens the Space too, rather than the "send to" picker.
+        compose.runOnUiThread {
+            links.handle(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "Static site https://hf.co/spaces/example/static-site"))
+        }
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Share Space"), timeout)
+
+        // Other Hub pages aren't ours to show.
+        compose.runOnUiThread {
+            assertFalse(links.handle(Intent(Intent.ACTION_VIEW, Uri.parse("https://huggingface.co/spaces/gradio"))))
+        }
+    }
+
+    @Test
+    fun `a pasted id opens that space from search`() {
+        compose.waitUntilAtLeastOneExists(hasText("Hello World"), timeout)
+        compose.onNode(hasSetTextAction() and hasText("Search Spaces")).performTextInput("https://huggingface.co/spaces/gradio/hello_world")
+        compose.waitUntilAtLeastOneExists(hasText("Open gradio/hello_world"), timeout)
+        screenshot("16-search-open-link")
+        compose.onNodeWithText("Open gradio/hello_world").performClick()
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Share Space"), timeout)
     }
 
     @Test

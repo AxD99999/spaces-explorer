@@ -17,6 +17,9 @@ import kotlinx.coroutines.launch
 /** Where an outside entry point (notification, shortcut, widget, share) wants to go. */
 sealed interface DeepLink {
     data class Runner(val spaceId: String, val fromTaskId: String? = null) : DeepLink
+
+    /** A Space opened by link; it may not be a Gradio one, so this goes to its details. */
+    data class Details(val spaceId: String) : DeepLink
     data class Screen(val route: String) : DeepLink
     data object ShareTarget : DeepLink
 }
@@ -39,10 +42,15 @@ class DeepLinks(private val scope: CoroutineScope, private val staging: UploadSt
     /** True while shared files are being copied into app storage. */
     val sharing: StateFlow<Boolean> = _sharing.asStateFlow()
 
-    fun handle(intent: Intent?) {
-        intent ?: return
+    /** Returns false for a link this app can't show, so the caller can pass it on to a browser. */
+    fun handle(intent: Intent?): Boolean {
+        intent ?: return true
         when (intent.action) {
             Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> receiveShare(intent)
+            Intent.ACTION_VIEW -> {
+                val spaceId = SpaceIds.fromUrl(intent.dataString) ?: return false
+                _pending.value = DeepLink.Details(spaceId)
+            }
             else -> {
                 val spaceId = intent.getStringExtra(EXTRA_SPACE_ID)
                 val route = intent.getStringExtra(EXTRA_ROUTE)
@@ -53,6 +61,7 @@ class DeepLinks(private val scope: CoroutineScope, private val staging: UploadSt
                 }
             }
         }
+        return true
     }
 
     fun consume(link: DeepLink) {
@@ -70,6 +79,13 @@ class DeepLinks(private val scope: CoroutineScope, private val staging: UploadSt
         val uris = sharedUris(intent)
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
         if (uris.isEmpty() && text == null) return
+        // Sharing a Space's page from the browser means "open this Space", not "send this text to one".
+        if (uris.isEmpty()) {
+            SpaceIds.fromUrl(text)?.let { spaceId ->
+                _pending.value = DeepLink.Details(spaceId)
+                return
+            }
+        }
         _pending.value = DeepLink.ShareTarget
         _sharing.value = true
         scope.launch {

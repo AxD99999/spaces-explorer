@@ -6,4 +6,5 @@
     <string name="widget_empty_subtitle">Run a Space to see results here</string>
     <string name="widget_image_description">Latest generated image</string>
     <string name="share_label">Send to a Space</string>
+    <string name="open_space_label">Open Space</string>
 </resources>
